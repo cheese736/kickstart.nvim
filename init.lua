@@ -699,6 +699,21 @@ do
 
     stylua = {}, -- Used to format Lua code
 
+    ts_ls = {
+      init_options = {
+        plugins = {
+          {
+            name = '@vue/typescript-plugin',
+            location = vim.fs.joinpath(vim.fn.stdpath 'data', 'mason', 'packages', 'vue-language-server', 'node_modules', '@vue', 'typescript-plugin'),
+            languages = { 'vue' },
+          },
+        },
+      },
+      filetypes = { 'typescript', 'javascript', 'javascriptreact', 'typescriptreact', 'vue' },
+    },
+
+    volar = {},
+
     -- Special Lua Config, as recommended by neovim help docs
     lua_ls = {
       on_init = function(client)
@@ -751,10 +766,16 @@ do
   --    :Mason
   --
   -- You can press `g?` for help in this menu.
-  local ensure_installed = vim.tbl_keys(servers or {})
+  -- Some lspconfig names differ from their mason package names, so filter them out
+  -- and add the correct mason package names explicitly below
+  local lspconfig_to_mason = { volar = 'vue-language-server', ts_ls = 'typescript-language-server' }
+  local ensure_installed = vim.tbl_filter(function(n) return not lspconfig_to_mason[n] end, vim.tbl_keys(servers or {}))
   vim.list_extend(ensure_installed, {
     -- You can add other tools here that you want Mason to install
     'csharpier',
+    'prettier',
+    'vue-language-server',
+    'typescript-language-server',
   })
 
   require('mason-tool-installer').setup { ensure_installed = ensure_installed }
@@ -780,6 +801,12 @@ do
         cs = true,
         -- lua = true,
         -- python = true,
+        javascript = true,
+        typescript = true,
+        vue = true,
+        css = true,
+        json = true,
+        html = true,
       }
       if enabled_filetypes[vim.bo[bufnr].filetype] then
         return { timeout_ms = 500 }
@@ -799,6 +826,12 @@ do
       --
       -- You can use 'stop_after_first' to run the first available formatter from the list
       -- javascript = { "prettierd", "prettier", stop_after_first = true },
+      javascript = { 'prettier' },
+      typescript = { 'prettier' },
+      vue = { 'prettier' },
+      css = { 'prettier' },
+      json = { 'prettier' },
+      html = { 'prettier' },
     },
   }
 
@@ -901,7 +934,7 @@ do
   vim.pack.add { { src = gh 'nvim-treesitter/nvim-treesitter', version = 'main' } }
 
   -- Ensure basic parsers are installed
-  local parsers = { 'bash', 'c', 'c_sharp', 'diff', 'html', 'lua', 'luadoc', 'markdown', 'markdown_inline', 'query', 'vim', 'vimdoc' }
+  local parsers = { 'bash', 'c', 'c_sharp', 'css', 'diff', 'html', 'javascript', 'jsdoc', 'lua', 'luadoc', 'markdown', 'markdown_inline', 'query', 'typescript', 'vim', 'vimdoc', 'vue' }
   require('nvim-treesitter').install(parsers)
 
   ---@param buf integer
