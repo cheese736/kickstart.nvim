@@ -98,7 +98,11 @@ dap.listeners.before.event_exited['dapui_config'] = dapui.close
 
 dap.adapters.coreclr = {
   type = 'executable',
-  command = 'C:\\Users\\User\\AppData\\Local\\nvim-data\\mason\\packages\\netcoredbg\\netcoredbg\\netcoredbg.exe',
+  command = vim.fs.joinpath(
+    vim.fn.stdpath 'data',
+    'mason', 'packages', 'netcoredbg', 'netcoredbg',
+    'netcoredbg' .. (vim.fn.has 'win32' == 1 and '.exe' or '')
+  ),
   args = { '--interpreter=vscode' },
 }
 
