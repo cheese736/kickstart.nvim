@@ -758,7 +758,14 @@ do
   }
 
   -- Automatically install LSPs and related tools to stdpath for Neovim
-  require('mason').setup {}
+  -- roslyn 套件不在官方 mason-registry 裡，需額外加入 Crashdummyy 的自訂 registry
+  -- （這個版本包含 Razor/.razorExtensions 支援）
+  require('mason').setup {
+    registries = {
+      'github:Crashdummyy/mason-registry',
+      'github:mason-org/mason-registry',
+    },
+  }
 
   -- Ensure the servers and tools above are installed
   --
@@ -777,6 +784,7 @@ do
     'prettier',
     'vue-language-server',
     'typescript-language-server',
+    'roslyn',
   })
 
   require('mason-tool-installer').setup { ensure_installed = ensure_installed }
