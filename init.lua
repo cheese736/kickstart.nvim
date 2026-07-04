@@ -493,6 +493,10 @@ do
       -- mappings = {
       --   i = { ['<c-enter>'] = 'to_fuzzy_refine' },
       -- },
+      mappings = {
+        i = { ['<C-d>'] = require('telescope.actions').delete_buffer },
+        n = { ['dd'] = require('telescope.actions').delete_buffer },
+      },
     },
     -- pickers = {}
     extensions = {
@@ -713,7 +717,7 @@ do
       filetypes = { 'typescript', 'javascript', 'javascriptreact', 'typescriptreact', 'vue' },
     },
 
-    volar = {},
+    vue_ls = {},
 
     -- Special Lua Config, as recommended by neovim help docs
     lua_ls = {
@@ -776,7 +780,7 @@ do
   -- You can press `g?` for help in this menu.
   -- Some lspconfig names differ from their mason package names, so filter them out
   -- and add the correct mason package names explicitly below
-  local lspconfig_to_mason = { volar = 'vue-language-server', ts_ls = 'typescript-language-server' }
+  local lspconfig_to_mason = { vue_ls = 'vue-language-server', ts_ls = 'typescript-language-server' }
   local ensure_installed = vim.tbl_filter(function(n) return not lspconfig_to_mason[n] end, vim.tbl_keys(servers or {}))
   vim.list_extend(ensure_installed, {
     -- You can add other tools here that you want Mason to install
