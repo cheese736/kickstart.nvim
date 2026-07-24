@@ -762,8 +762,9 @@ do
   }
 
   -- Automatically install LSPs and related tools to stdpath for Neovim
-  -- roslyn 套件不在官方 mason-registry 裡，需額外加入 Crashdummyy 的自訂 registry
-  -- （這個版本包含 Razor/.razorExtensions 支援）
+  -- 官方 mason-registry 沒有真正的 Roslyn LSP 套件（只有不同專案的
+  -- csharp-language-server），實際能用的 `roslyn` 套件只在 Crashdummyy
+  -- 的自訂 registry 裡，執行檔會裝成 `roslyn.cmd`。
   require('mason').setup {
     registries = {
       'github:Crashdummyy/mason-registry',
@@ -1027,20 +1028,6 @@ end
 
 -- 賀的配置
 do
-  -- Mason 安裝的執行檔叫 `roslyn`，跟 nvim-lspconfig 預設尋找的
-  -- `roslyn-language-server` / `Microsoft.CodeAnalysis.LanguageServer` 對不上，
-  -- 需手動覆寫 cmd 指向 mason 安裝的 shim。
-  -- --logLevel 和 --extensionLogDirectory 是這個版本的必填參數，缺少的話
-  -- server 會把 usage 說明印到 stdout，弄壞 LSP 的訊息框架直接崩潰。
-  vim.lsp.config('roslyn_ls', {
-    cmd = {
-      vim.fs.joinpath(vim.fn.stdpath 'data', 'mason', 'bin', 'roslyn.cmd'),
-      '--logLevel=Information',
-      '--extensionLogDirectory=' .. vim.fs.joinpath(vim.fn.stdpath 'log', 'roslyn'),
-      '--stdio',
-    },
-  })
-  vim.lsp.enable 'roslyn_ls'
   -- 在 insert mode 快速連按 j + j 離開
   vim.keymap.set('i', 'jj', '<Esc>', { desc = 'Exit insert mode' })
 

@@ -1,0 +1,73 @@
+-- .NET development comfort layer: Roslyn LSP client, CodeLens, DAP attach,
+-- and quick terminal shortcuts for the dotnet CLI.
+
+vim.pack.add { 'https://github.com/seblyng/roslyn.nvim' }
+
+-- broad_search: the TFVC workspace is a deep directory tree, so make sure the
+-- .sln is found even when nvim is opened from a subdirectory of the solution.
+require('roslyn').setup { broad_search = true }
+
+vim.lsp.config('roslyn', {
+  -- roslyn.nvim's auto-discovery only looks for `roslyn-language-server(.cmd)`,
+  -- but the mason package that actually ships a working server here
+  -- (Crashdummyy registry's `roslyn`) installs its shim as `roslyn.cmd`.
+  -- --logLevel / --extensionLogDirectory are required for this build: without
+  -- them the server prints its usage text to stdout and corrupts the LSP framing.
+  cmd = {
+    vim.fs.joinpath(vim.fn.stdpath 'data', 'mason', 'bin', 'roslyn.cmd'),
+    '--logLevel=Information',
+    '--extensionLogDirectory=' .. vim.fs.joinpath(vim.fn.stdpath 'log', 'roslyn'),
+    '--stdio',
+  },
+  settings = {
+    ['csharp|code_lens'] = {
+      dotnet_enable_references_code_lens = true,
+      dotnet_enable_tests_code_lens = true,
+    },
+  },
+})
+
+-- Refresh and run CodeLens (e.g. "N references") for any LSP that supports it.
+vim.api.nvim_create_autocmd('LspAttach', {
+  group = vim.api.nvim_create_augroup('custom-codelens', { clear = true }),
+  callback = function(event)
+    local client = vim.lsp.get_client_by_id(event.data.client_id)
+    if not (client and client:supports_method 'textDocument/codeLens') then return end
+
+    vim.api.nvim_create_autocmd({ 'BufEnter', 'CursorHold', 'InsertLeave' }, {
+      buffer = event.buf,
+      group = vim.api.nvim_create_augroup('custom-codelens-refresh-' .. event.buf, { clear = true }),
+      callback = function() vim.lsp.codelens.refresh { bufnr = event.buf } end,
+    })
+
+    vim.keymap.set('n', '<leader>lc', vim.lsp.codelens.run, { buffer = event.buf, desc = '[L]SP Run [C]odeLens' })
+  end,
+})
+
+-- Attach to an already-running process (e.g. `dotnet watch run`), alongside
+-- the existing launch config in kickstart.plugins.debug.
+table.insert(require('dap').configurations.cs, {
+  type = 'coreclr',
+  name = 'attach - netcoredbg',
+  request = 'attach',
+  processId = require('dap.utils').pick_process,
+})
+
+-- Quick dotnet CLI terminal, reusing a single scratch split so repeated
+-- commands don't stack up windows.
+local dotnet_term = { win = nil }
+
+local function dotnet_run(cmd)
+  if dotnet_term.win and vim.api.nvim_win_is_valid(dotnet_term.win) then vim.api.nvim_win_close(dotnet_term.win, true) end
+  vim.cmd 'botright new'
+  vim.api.nvim_win_set_height(0, 15)
+  vim.fn.jobstart(cmd, { term = true })
+  vim.cmd.startinsert()
+  dotnet_term.win = vim.api.nvim_get_current_win()
+end
+
+require('which-key').add { { '<leader>d', group = '[D]otnet' } }
+vim.keymap.set('n', '<leader>db', function() dotnet_run 'dotnet build' end, { desc = 'Dotnet: [B]uild' })
+vim.keymap.set('n', '<leader>dt', function() dotnet_run 'dotnet test' end, { desc = 'Dotnet: [T]est' })
+vim.keymap.set('n', '<leader>dw', function() dotnet_run 'dotnet watch run' end, { desc = 'Dotnet: [W]atch run' })
+vim.keymap.set('n', '<leader>dr', function() dotnet_run 'dotnet restore' end, { desc = 'Dotnet: [R]estore' })
