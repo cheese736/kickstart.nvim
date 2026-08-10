@@ -27,19 +27,17 @@ vim.lsp.config('roslyn', {
   },
 })
 
--- Refresh and run CodeLens (e.g. "N references") for any LSP that supports it.
+-- Enable CodeLens (e.g. "N references") for any LSP that supports it.
+-- Nvim 0.12 refreshes codelens automatically on buffer changes internally,
+-- so no manual refresh autocmd is needed (vim.lsp.codelens.refresh() is
+-- deprecated in favor of vim.lsp.codelens.enable()).
 vim.api.nvim_create_autocmd('LspAttach', {
   group = vim.api.nvim_create_augroup('custom-codelens', { clear = true }),
   callback = function(event)
     local client = vim.lsp.get_client_by_id(event.data.client_id)
     if not (client and client:supports_method 'textDocument/codeLens') then return end
 
-    vim.api.nvim_create_autocmd({ 'BufEnter', 'CursorHold', 'InsertLeave' }, {
-      buffer = event.buf,
-      group = vim.api.nvim_create_augroup('custom-codelens-refresh-' .. event.buf, { clear = true }),
-      callback = function() vim.lsp.codelens.refresh { bufnr = event.buf } end,
-    })
-
+    vim.lsp.codelens.enable(true, { bufnr = event.buf })
     vim.keymap.set('n', '<leader>lc', vim.lsp.codelens.run, { buffer = event.buf, desc = '[L]SP Run [C]odeLens' })
   end,
 })
