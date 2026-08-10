@@ -158,6 +158,20 @@ do
   vim.o.list = true
   vim.opt.listchars = { tab = '» ', trail = '·', nbsp = '␣' }
 
+  -- Auto-detect line ending format (unix/dos/mac) when opening a file,
+  -- instead of assuming 'unix' and showing CRLF files with a trailing ^M.
+  -- See `:help 'fileformats'`
+  vim.opt.fileformats = { 'unix', 'dos', 'mac' }
+
+  -- Some repos ship an .editorconfig with `end_of_line = lf`, but individual
+  -- files (e.g. checked out via TFVC on Windows) can still be CRLF on disk.
+  -- Neovim's builtin editorconfig support would otherwise force
+  -- fileformat=unix on such files despite the CRLF content, undoing the
+  -- autodetection above and bringing back the ^M. Let autodetection win;
+  -- the rest of editorconfig (indent, charset, trim_trailing_whitespace...)
+  -- is untouched. See `:help editorconfig-properties`
+  require('editorconfig').properties.end_of_line = function() end
+
   -- Preview substitutions live, as you type!
   vim.o.inccommand = 'split'
 
@@ -898,6 +912,14 @@ do
       -- See `:help blink-cmp-config-keymap` for defining your own keymap
       preset = 'default',
 
+      -- Custom overrides on top of the 'default' preset above.
+      -- <Tab> tries accept first; if no completion menu is open (e.g. mid
+      -- snippet from Roslyn's `prop`/`ctor`/... templates), it falls through
+      -- to jumping to the next snippet tabstop, then to normal <Tab> input.
+      ['<Tab>'] = { 'select_and_accept', 'snippet_forward', 'fallback' },
+      ['<M-j>'] = { 'select_next', 'fallback' },
+      ['<M-k>'] = { 'select_prev', 'fallback' },
+
       -- For more advanced Luasnip keymaps (e.g. selecting choice nodes, expansion) see:
       --    https://github.com/L3MON4D3/LuaSnip?tab=readme-ov-file#keymaps
     },
@@ -912,10 +934,25 @@ do
       -- By default, you may press `<c-space>` to show the documentation.
       -- Optionally, set `auto_show = true` to show the documentation after a delay.
       documentation = { auto_show = false, auto_show_delay_ms = 500 },
+
+      -- Add a border around the completion menu popup.
+      menu = { border = 'rounded' },
+
+      list = {
+        selection = {
+          -- Don't insert the selected item's text into the buffer just from
+          -- moving the selection; only ghost_text previews it, and accepting
+          -- (<Tab>) still inserts for real.
+          auto_insert = false,
+        },
+      },
+
+      -- Preview the selected item inline as grey ghost text, Copilot-style.
+      ghost_text = { enabled = true },
     },
 
     sources = {
-      default = { 'lsp', 'path', 'snippets' },
+      default = { 'lsp', 'path', 'snippets', 'buffer' },
     },
 
     snippets = { preset = 'luasnip' },
