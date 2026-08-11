@@ -529,29 +529,29 @@ do
       local buf = event.buf
 
       -- Find references for the word under your cursor.
-      vim.keymap.set('n', '<leader>lr', builtin.lsp_references, { buffer = buf, desc = '[L]SP [R]eferences' })
+      vim.keymap.set('n', '<leader>lr', builtin.lsp_references, { buffer = buf, desc = '[R]eferences' })
 
       -- Jump to the implementation of the word under your cursor.
       -- Useful when your language has ways of declaring types without an actual implementation.
-      vim.keymap.set('n', '<leader>li', builtin.lsp_implementations, { buffer = buf, desc = '[L]SP [I]mplementation' })
+      vim.keymap.set('n', '<leader>li', builtin.lsp_implementations, { buffer = buf, desc = '[I]mplementation' })
 
       -- Jump to the definition of the word under your cursor.
       -- This is where a variable was first declared, or where a function is defined, etc.
       -- To jump back, press <C-t>.
-      vim.keymap.set('n', '<leader>ld', builtin.lsp_definitions, { buffer = buf, desc = '[L]SP [D]efinition' })
+      vim.keymap.set('n', '<leader>ld', builtin.lsp_definitions, { buffer = buf, desc = '[D]efinition' })
 
       -- Fuzzy find all the symbols in your current document.
       -- Symbols are things like variables, functions, types, etc.
-      vim.keymap.set('n', '<leader>lo', builtin.lsp_document_symbols, { buffer = buf, desc = '[L]SP D[o]cument Symbols' })
+      vim.keymap.set('n', '<leader>lo', builtin.lsp_document_symbols, { buffer = buf, desc = 'D[o]cument Symbols' })
 
       -- Fuzzy find all the symbols in your current workspace.
       -- Similar to document symbols, except searches over your entire project.
-      vim.keymap.set('n', '<leader>lw', builtin.lsp_dynamic_workspace_symbols, { buffer = buf, desc = '[L]SP [W]orkspace Symbols' })
+      vim.keymap.set('n', '<leader>lw', builtin.lsp_dynamic_workspace_symbols, { buffer = buf, desc = '[W]orkspace Symbols' })
 
       -- Jump to the type of the word under your cursor.
       -- Useful when you're not sure what type a variable is and you want to see
       -- the definition of its *type*, not where it was *defined*.
-      vim.keymap.set('n', '<leader>lt', builtin.lsp_type_definitions, { buffer = buf, desc = '[L]SP [T]ype Definition' })
+      vim.keymap.set('n', '<leader>lt', builtin.lsp_type_definitions, { buffer = buf, desc = '[T]ype Definition' })
     end,
   })
 
@@ -636,15 +636,15 @@ do
 
       -- Rename the variable under your cursor.
       --  Most Language Servers support renaming across files, etc.
-      map('<leader>ln', vim.lsp.buf.rename, '[L]SP Re[n]ame')
+      map('<leader>ln', vim.lsp.buf.rename, 'Re[n]ame')
 
       -- Execute a code action, usually your cursor needs to be on top of an error
       -- or a suggestion from your LSP for this to activate.
-      map('<leader>la', vim.lsp.buf.code_action, '[L]SP Code [A]ction', { 'n', 'x' })
+      map('<leader>la', vim.lsp.buf.code_action, 'Code [A]ction', { 'n', 'x' })
 
       -- WARN: This is not Goto Definition, this is Goto Declaration.
       --  For example, in C this would take you to the header.
-      map('<leader>lD', vim.lsp.buf.declaration, '[L]SP [D]eclaration')
+      map('<leader>lD', vim.lsp.buf.declaration, '[D]eclaration')
 
       -- The following two autocommands are used to highlight references of the
       -- word under your cursor when your cursor rests there for a little while.
@@ -680,7 +680,7 @@ do
       --
       -- This may be unwanted, since they displace some of your code
       if client and client:supports_method('textDocument/inlayHint', event.buf) then
-        map('<leader>lh', function() vim.lsp.inlay_hint.enable(not vim.lsp.inlay_hint.is_enabled { bufnr = event.buf }) end, '[L]SP Toggle Inlay [H]ints')
+        map('<leader>lh', function() vim.lsp.inlay_hint.enable(not vim.lsp.inlay_hint.is_enabled { bufnr = event.buf }) end, 'Toggle Inlay [H]ints')
       end
     end,
   })
