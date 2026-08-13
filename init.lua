@@ -264,6 +264,18 @@ do
     group = vim.api.nvim_create_augroup('kickstart-highlight-yank', { clear = true }),
     callback = function() vim.hl.on_yank() end,
   })
+
+  -- Most filetype plugins (c, cs, javascript, lua, ...) turn on 'formatoptions'
+  -- flags that auto-continue the comment leader (e.g. `//`) onto the next
+  -- line after <CR> in Insert mode ('r') or `o`/`O` in Normal mode ('o').
+  -- Strip those; keep the rest of 'formatoptions' (e.g. `c`, which wraps
+  -- long comment lines at 'textwidth') as each ftplugin sets it.
+  vim.api.nvim_create_autocmd('FileType', {
+    desc = "Don't auto-continue comment leader on new lines",
+    group = vim.api.nvim_create_augroup('no-auto-comment-continuation', { clear = true }),
+    pattern = '*',
+    callback = function() vim.opt_local.formatoptions:remove { 'r', 'o' } end,
+  })
 end
 
 -- ============================================================
