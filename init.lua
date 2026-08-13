@@ -233,6 +233,11 @@ do
   -- vim.keymap.set('n', '<up>', '<cmd>echo "Use k to move!!"<CR>')
   -- vim.keymap.set('n', '<down>', '<cmd>echo "Use j to move!!"<CR>')
 
+  -- Keep the visual selection after indenting/outdenting, so `<`/`>` can be
+  -- pressed repeatedly without having to reselect with `gv` each time.
+  vim.keymap.set('v', '<', '<gv', { desc = 'Decrease indent (keep selection)' })
+  vim.keymap.set('v', '>', '>gv', { desc = 'Increase indent (keep selection)' })
+
   -- Keybinds to make split navigation easier.
   --  Use CTRL+<hjkl> to switch between windows
   --
