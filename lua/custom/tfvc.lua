@@ -1,6 +1,7 @@
 -- TFVC (Team Foundation Version Control) CLI wrapper
 -- Used by lua/kickstart/plugins/neo-tree.lua to run tf.exe against the
--- node under the cursor in the neo-tree filesystem window.
+-- node under the cursor in the neo-tree filesystem window, and by the
+-- InsertEnter checkout prompt at the bottom of this file.
 
 local M = {}
 
@@ -18,6 +19,11 @@ function M.to_tf_path(path)
   local converted = path:gsub('^' .. prefix, WORKSPACE_PREFIX)
   return converted
 end
+
+--- Whether a physical path lives inside the TFVC-substituted workspace
+--- (and thus `to_tf_path`/`checkout` etc. make sense to call on it).
+--- @param path string
+function M.is_tfvc_path(path) return path:sub(1, #SUBST_PREFIX):lower() == SUBST_PREFIX:lower() end
 
 --- Run `tf <args>` asynchronously and notify with the result.
 --- @param args string[]
@@ -179,5 +185,49 @@ function M.delete(path, node_type, on_done)
   end
   M.run(with_recursive({ 'delete', tf_path }, node_type), on_done)
 end
+
+-- Prompt to check out the current file whenever Insert mode is entered
+-- while it's still read-only. Vim's 'readonly' only blocks `:w` (you can
+-- still type into a readonly buffer), so without this you'd happily type
+-- for a while before discovering — at save time — that you never checked
+-- the file out.
+vim.api.nvim_create_autocmd('InsertEnter', {
+  group = vim.api.nvim_create_augroup('tfvc-checkout-prompt', { clear = true }),
+  callback = function(event)
+    if vim.bo[event.buf].buftype ~= '' or not vim.bo[event.buf].readonly then
+      return
+    end
+
+    local path = vim.api.nvim_buf_get_name(event.buf)
+    if path == '' or not M.is_tfvc_path(path) then
+      return
+    end
+
+    -- Deliberately asks every time: as long as 'readonly' stays true (i.e.
+    -- checkout hasn't happened yet), re-entering Insert mode re-prompts.
+    vim.schedule(function()
+      local choice = vim.fn.confirm('File is read-only. Run TFVC checkout?', '&Yes\n&No', 1)
+      if choice ~= 1 then
+        -- Declined: back out of Insert mode rather than leaving them typing
+        -- into a buffer they just said they don't want checked out.
+        vim.cmd 'stopinsert'
+        return
+      end
+
+      M.checkout(path, 'file', function(ok)
+        if not ok or not vim.api.nvim_buf_is_valid(event.buf) then
+          return
+        end
+        vim.schedule(function()
+          -- Reload so 'readonly' is re-evaluated against the now-writable file.
+          vim.api.nvim_buf_call(event.buf, function() vim.cmd 'edit!' end)
+          if vim.api.nvim_get_current_buf() == event.buf then
+            vim.cmd.startinsert()
+          end
+        end)
+      end)
+    end)
+  end,
+})
 
 return M
