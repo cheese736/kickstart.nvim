@@ -443,6 +443,25 @@ do
   ---@diagnostic disable-next-line: duplicate-set-field
   statusline.section_location = function() return '%2l:%-2v' end
 
+  -- Dim the directory part of the filename so the filename itself stands
+  -- out; also shorten the directory to be relative to the cwd instead of
+  -- always printing the full absolute path.
+  vim.api.nvim_set_hl(0, 'MiniStatuslineFilenameDir', { link = 'Comment', default = true })
+  ---@diagnostic disable-next-line: duplicate-set-field
+  statusline.section_filename = function()
+    local path = vim.api.nvim_buf_get_name(0)
+    if path == '' then return '[No Name]' end
+
+    -- `:~` shortens $HOME to `~`, `:.` makes it relative to cwd (falls back
+    -- to absolute if the file isn't under cwd), `:h` drops the filename.
+    local dir = vim.fn.fnamemodify(path, ':~:.:h')
+    local tail = vim.fn.fnamemodify(path, ':t')
+
+    local sep = package.config:sub(1, 1) -- OS path separator, matches what fnamemodify already used in `dir`
+    local dir_part = (dir == '.' or dir == '') and '' or ('%#MiniStatuslineFilenameDir#' .. dir .. sep)
+    return dir_part .. '%#MiniStatuslineFilename#' .. tail .. '%m%r'
+  end
+
   -- ... and there is more!
   --  Check out: https://github.com/nvim-mini/mini.nvim
 end
