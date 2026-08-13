@@ -34,6 +34,20 @@ vim.lsp.config('roslyn', {
   },
 })
 
+-- Roslyn ships an LSP `textDocument/inlineCompletion` handler (used by VS's
+-- IntelliCode whole-line/whole-method suggestions). Neovim 0.12+ has a native
+-- client for this protocol (`vim.lsp.inline_completion`), so wire it up to
+-- see whether this standalone Roslyn build actually returns anything —
+-- IntelliCode's suggestion models normally ship with Visual Studio, so this
+-- may just silently return no items.
+vim.lsp.inline_completion.enable()
+
+-- <C-j> (free — not used by blink.cmp) accepts the ghost text; falls back to
+-- a literal <C-j> keypress when nothing is showing.
+vim.keymap.set('i', '<C-j>', function()
+  if not vim.lsp.inline_completion.get() then return '<C-j>' end
+end, { expr = true, desc = 'Accept LSP inline completion (Roslyn IntelliCode)' })
+
 -- Enable CodeLens (e.g. "N references") for any LSP that supports it.
 -- Nvim 0.12 refreshes codelens automatically on buffer changes internally,
 -- so no manual refresh autocmd is needed (vim.lsp.codelens.refresh() is
