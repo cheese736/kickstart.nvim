@@ -24,6 +24,13 @@ vim.lsp.config('roslyn', {
       dotnet_enable_references_code_lens = true,
       dotnet_enable_tests_code_lens = true,
     },
+    -- Turn off Roslyn's IDE/analyzer suggestions (CA*, IDE0090, IDE0028,
+    -- "member can be marked as static", etc.) shown as diagnostic virtual
+    -- text; real compiler errors/warnings (CS*) are a separate scope and
+    -- keep working.
+    ['csharp|background_analysis'] = {
+      dotnet_analyzer_diagnostics_scope = 'none',
+    },
   },
 })
 
