@@ -202,8 +202,8 @@ do
     underline = { severity = { min = vim.diagnostic.severity.WARN } },
 
     -- Can switch between these as you prefer
-    virtual_text = true, -- Text shows up at the end of the line
-    virtual_lines = false, -- Text shows up underneath the line, with virtual lines
+    virtual_text = false, -- Text shows up at the end of the line
+    virtual_lines = true, -- Text shows up underneath the line, with virtual lines
 
     -- Auto open the float, so you can easily read the errors when jumping with `[d` and `]d`
     jump = {
@@ -820,11 +820,19 @@ do
   local ensure_installed = vim.tbl_filter(function(n) return not lspconfig_to_mason[n] end, vim.tbl_keys(servers or {}))
   vim.list_extend(ensure_installed, {
     -- You can add other tools here that you want Mason to install
-    'csharpier',
+    -- csharpier removed: not used for cs formatting anymore (see conform's
+    -- formatters_by_ft — Roslyn LSP formatting is used instead), and Mason's
+    -- self-contained build crashes on startup on this machine anyway.
     'prettier',
     'vue-language-server',
     'typescript-language-server',
     'roslyn',
+    -- llm-ls: llm.nvim's own auto-downloader can't run on Windows (it looks
+    -- up os_uname().sysname against "Windows" but Windows actually reports
+    -- "Windows_NT", so the lookup fails). Mason's build works fine here, so
+    -- llm.lua points `lsp.bin_path` at Mason's copy instead of letting
+    -- llm.nvim try to fetch it itself.
+    'llm-ls',
   })
 
   require('mason-tool-installer').setup { ensure_installed = ensure_installed }
@@ -843,7 +851,7 @@ do
   -- [[ Formatting ]]
   vim.pack.add { gh 'stevearc/conform.nvim' }
   require('conform').setup {
-    notify_on_error = false,
+    notify_on_error = true,
     format_on_save = function(bufnr)
       -- You can specify filetypes to autoformat on save here:
       local enabled_filetypes = {
@@ -868,7 +876,14 @@ do
     },
     -- You can also specify external formatters in here.
     formatters_by_ft = {
-      cs = { 'csharpier' },
+      -- cs: intentionally no external formatter. CSharpier is a fixed-opinion
+      -- formatter (like Prettier/gofmt) that ignores this project's
+      -- .editorconfig codeStyle rules (brace placement, expression-bodied
+      -- preferences, spacing, etc.) entirely, so its output doesn't match
+      -- Visual Studio's "Format Document". Falling through to
+      -- `lsp_format = 'fallback'` below routes formatting through Roslyn's
+      -- own textDocument/formatting instead, which is the same formatting
+      -- engine VS uses and does honor .editorconfig.
       -- rust = { 'rustfmt' },
       -- Conform can also run multiple formatters sequentially
       -- python = { "isort", "black" },
@@ -985,7 +1000,7 @@ do
     -- the rust implementation via `'prefer_rust_with_warning'`
     --
     -- See `:help blink-cmp-config-fuzzy` for more information
-    fuzzy = { implementation = 'lua' },
+    fuzzy = { implementation = 'prefer_rust_with_warning' },
 
     -- Shows a signature help window while you type arguments for a function
     signature = { enabled = true },
