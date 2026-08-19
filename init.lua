@@ -529,11 +529,14 @@ do
       --   i = { ['<c-enter>'] = 'to_fuzzy_refine' },
       -- },
       mappings = {
-        i = { ['<C-d>'] = require('telescope.actions').delete_buffer },
+        -- Insert-mode <C-d> used to be remapped to delete_buffer here, but
+        -- that's a `defaults` mapping so it leaked into every picker (e.g.
+        -- shadowing live_grep's preview-scroll-down while typing a query).
+        -- Normal-mode 'dd' below is unaffected since it only makes sense
+        -- in the buffers picker anyway.
         n = { ['dd'] = require('telescope.actions').delete_buffer },
       },
     },
-    -- pickers = {}
     extensions = {
       ['ui-select'] = { require('telescope.themes').get_dropdown() },
     },
