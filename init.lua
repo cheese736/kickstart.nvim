@@ -536,6 +536,20 @@ do
         -- in the buffers picker anyway.
         n = { ['dd'] = require('telescope.actions').delete_buffer },
       },
+      layout_config = {
+        width = 0.95,
+        height = 0.95,
+        -- Fixed 60/40 Preview/Results split instead of the default dynamic
+        -- sizing (which only gives Preview ~40% on narrow windows).
+        preview_width = 0.6,
+      },
+    },
+    pickers = {
+      live_grep = {
+        -- The Preview pane already shows the full matched line, so
+        -- repeating it in Results just eats width there for nothing.
+        show_line = false,
+      },
     },
     extensions = {
       ['ui-select'] = { require('telescope.themes').get_dropdown() },
