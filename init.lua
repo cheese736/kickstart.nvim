@@ -682,6 +682,18 @@ do
       --  For example, in C this would take you to the header.
       map('<leader>lD', vim.lsp.buf.declaration, '[D]eclaration')
 
+      -- Restart the LSP client(s) attached to this buffer. Cheaper than
+      -- quitting nvim entirely for cases like Roslyn caching stale
+      -- .editorconfig-derived formatting options for a file that was
+      -- created after the server was already running.
+      -- Bare `:LspRestart` (no args) restarts *every* active client across
+      -- all buffers, so scope it to just this buffer's client(s) by name.
+      map('<leader>lR', function()
+        local names = vim.tbl_map(function(c) return c.name end, vim.lsp.get_clients { bufnr = 0 })
+        if #names == 0 then return end
+        vim.cmd('LspRestart ' .. table.concat(names, ' '))
+      end, '[R]estart')
+
       -- The following two autocommands are used to highlight references of the
       -- word under your cursor when your cursor rests there for a little while.
       --    See `:help CursorHold` for information about when this is executed
