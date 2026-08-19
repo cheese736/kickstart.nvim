@@ -276,6 +276,30 @@ do
     pattern = '*',
     callback = function() vim.opt_local.formatoptions:remove { 'r', 'o' } end,
   })
+
+  -- When the first non-blank character is typed on an otherwise-empty line,
+  -- re-run the buffer's indentexpr to fix the leading whitespace (same as
+  -- manually pressing <C-f> in insert mode — see 'indentkeys': the default
+  -- "!^F" entry is exactly this). Catches cases where the indent computed on
+  -- <CR>/o/O (e.g. from treesitter's indentexpr) doesn't match what the
+  -- line's contents turn out to need.
+  vim.api.nvim_create_autocmd('InsertCharPre', {
+    desc = 'Fix indent when typing the first character on a blank line',
+    group = vim.api.nvim_create_augroup('reindent-on-first-char', { clear = true }),
+    callback = function()
+      -- Skip whitespace itself (a manual Tab/Space shouldn't be fought) and
+      -- skip when there's no indentexpr to recompute against.
+      if vim.v.char:match '%s' or vim.bo.indentexpr == '' then return end
+      if not vim.api.nvim_get_current_line():match '^%s*$' then return end
+
+      -- InsertCharPre can't touch the buffer (textlock), so defer until the
+      -- character has actually landed.
+      vim.schedule(function()
+        if vim.fn.mode() ~= 'i' then return end
+        vim.api.nvim_feedkeys(vim.api.nvim_replace_termcodes('<C-f>', true, false, true), 'n', false)
+      end)
+    end,
+  })
 end
 
 -- ============================================================
