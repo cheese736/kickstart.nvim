@@ -60,6 +60,58 @@ vim.keymap.set('i', '<M-i>', function()
   if not vim.lsp.inline_completion.get() then return '<M-i>' end
 end, { expr = true, desc = 'Accept LSP inline completion (Roslyn IntelliCode)' })
 
+-- Roslyn's `textDocument/_vs_onAutoInsert` (a non-standard LSP extension,
+-- same protocol VS/VS Code's C# extension use) expands `///` into an XML
+-- doc-comment skeleton: just <summary></summary> above a property, or a
+-- full <summary>/<param>/<returns> skeleton above a method, matching the
+-- member's actual signature. The server decides the content and the
+-- tabstops entirely — we just forward every '/' keypress and let it
+-- return nil for the (vast majority of) irrelevant cases, same as the
+-- roslyn.nvim wiki recipe: https://github.com/seblyng/roslyn.nvim/wiki#textdocument_vs_onautoinsert
+--
+-- Deviates from that recipe by expanding via `luasnip.lsp_expand` instead
+-- of `vim.snippet.expand`: blink.cmp's <Tab>/<S-Tab> (init.lua) only know
+-- how to jump LuaSnip sessions (snippets.preset = 'luasnip'), not the
+-- native vim.snippet engine, so using LuaSnip here lets the existing Tab
+-- keymap jump between <summary>/<param>/<returns> for free.
+vim.api.nvim_create_autocmd('LspAttach', {
+  group = vim.api.nvim_create_augroup('roslyn-doc-comment-auto-insert', { clear = true }),
+  callback = function(args)
+    local client = vim.lsp.get_client_by_id(args.data.client_id)
+    if not (client and client.name == 'roslyn') then return end
+    local bufnr = args.buf
+
+    vim.api.nvim_create_autocmd('InsertCharPre', {
+      desc = 'Roslyn: expand /// into an XML doc comment skeleton',
+      buffer = bufnr,
+      callback = function()
+        if vim.v.char ~= '/' then return end
+
+        local row, col = unpack(vim.api.nvim_win_get_cursor(0))
+        row, col = row - 1, col + 1
+        local params = {
+          _vs_textDocument = { uri = vim.uri_from_bufnr(bufnr) },
+          _vs_position = { line = row, character = col },
+          _vs_ch = '/',
+          _vs_options = {
+            tabSize = vim.bo[bufnr].tabstop,
+            insertSpaces = vim.bo[bufnr].expandtab,
+          },
+        }
+
+        -- Must fire after the '/' has actually landed in the buffer.
+        vim.defer_fn(function()
+          ---@diagnostic disable-next-line: param-type-mismatch
+          client:request('textDocument/_vs_onAutoInsert', params, function(err, result)
+            if err or not result then return end
+            require('luasnip').lsp_expand(result._vs_textEdit.newText)
+          end, bufnr)
+        end, 1)
+      end,
+    })
+  end,
+})
+
 -- Enable CodeLens (e.g. "N references") for any LSP that supports it.
 -- Nvim 0.12 refreshes codelens automatically on buffer changes internally,
 -- so no manual refresh autocmd is needed (vim.lsp.codelens.refresh() is
