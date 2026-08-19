@@ -994,7 +994,15 @@ do
     -- the rust implementation via `'prefer_rust_with_warning'`
     --
     -- See `:help blink-cmp-config-fuzzy` for more information
-    fuzzy = { implementation = 'prefer_rust_with_warning' },
+    --
+    -- use_proximity (on by default) boosts candidates whose text also shows
+    -- up as a "nearby word" within ~30 lines of the cursor. In files full of
+    -- near-identical boilerplate (e.g. a block of GetListData/Request/
+    -- Result/Status methods), that swamps a clean prefix match (e.g. typing
+    -- "is" for "IsAdd") with matches that merely contain "is" mid-word but
+    -- share vocabulary with the surrounding lines. Turn it off so ranking is
+    -- driven by match quality (prefix/word-boundary), not local word density.
+    fuzzy = { implementation = 'prefer_rust_with_warning', use_proximity = false },
 
     -- Shows a signature help window while you type arguments for a function
     signature = { enabled = true },
