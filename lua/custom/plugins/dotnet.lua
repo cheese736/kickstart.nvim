@@ -31,6 +31,17 @@ vim.lsp.config('roslyn', {
     ['csharp|background_analysis'] = {
       dotnet_analyzer_diagnostics_scope = 'none',
     },
+    -- Stop completion from suggesting types/extension methods from
+    -- unimported namespaces and reference assemblies (e.g. transitive
+    -- NuGet deps like Org.BouncyCastle). Without this, typing a short
+    -- prefix like "is" floods the completion menu with unrelated
+    -- third-party types that merely contain those letters.
+    ['csharp|completion'] = {
+      dotnet_show_completion_items_from_unimported_namespaces = false,
+    },
+    ['csharp|symbol_search'] = {
+      dotnet_search_reference_assemblies = false,
+    },
   },
 })
 
