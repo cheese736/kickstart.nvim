@@ -827,12 +827,6 @@ do
     'vue-language-server',
     'typescript-language-server',
     'roslyn',
-    -- llm-ls: llm.nvim's own auto-downloader can't run on Windows (it looks
-    -- up os_uname().sysname against "Windows" but Windows actually reports
-    -- "Windows_NT", so the lookup fails). Mason's build works fine here, so
-    -- llm.lua points `lsp.bin_path` at Mason's copy instead of letting
-    -- llm.nvim try to fetch it itself.
-    'llm-ls',
   })
 
   require('mason-tool-installer').setup { ensure_installed = ensure_installed }
