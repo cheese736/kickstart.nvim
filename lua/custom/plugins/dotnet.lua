@@ -53,10 +53,11 @@ vim.lsp.config('roslyn', {
 -- may just silently return no items.
 vim.lsp.inline_completion.enable()
 
--- <C-j> (free — not used by blink.cmp) accepts the ghost text; falls back to
--- a literal <C-j> keypress when nothing is showing.
-vim.keymap.set('i', '<C-j>', function()
-  if not vim.lsp.inline_completion.get() then return '<C-j>' end
+-- <M-i> accepts the ghost text; falls back to a literal <M-i> keypress
+-- when nothing is showing. (Previously <C-j>, but that collides with
+-- Ctrl-J-as-newline in insert mode.)
+vim.keymap.set('i', '<M-i>', function()
+  if not vim.lsp.inline_completion.get() then return '<M-i>' end
 end, { expr = true, desc = 'Accept LSP inline completion (Roslyn IntelliCode)' })
 
 -- Enable CodeLens (e.g. "N references") for any LSP that supports it.
