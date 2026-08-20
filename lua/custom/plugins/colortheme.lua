@@ -16,7 +16,7 @@ require('tokyonight').setup {
 -- call below to 'catppuccin' (or a flavor variant) to switch to it.
 vim.pack.add { 'https://github.com/catppuccin/nvim' }
 require('catppuccin').setup {
-  flavour = 'macchiato', -- latte, frappe, macchiato, mocha
+  flavour = 'frappe', -- latte, frappe, macchiato, mocha
 }
 
 -- Load the colorscheme here.

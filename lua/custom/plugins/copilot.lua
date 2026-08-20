@@ -1,13 +1,13 @@
 -- GitHub Copilot: cloud-backed ghost-text completion, alongside Roslyn's LSP
--- inline completion. Copilot's API responds in ~100-300ms, so auto-trigger
--- is fine here.
+-- inline completion. Manually triggered (see keymap.next below) rather than
+-- auto-popping on every pause, so suggestions only show up when asked for.
 
 vim.pack.add { 'https://github.com/zbirenbaum/copilot.lua' }
 
 require('copilot').setup {
   suggestion = {
     enabled = true,
-    auto_trigger = true,
+    auto_trigger = false,
     -- blink.cmp's menu is open almost continuously while typing an
     -- identifier (its default trigger fires on most keystrokes), so leaving
     -- this true effectively hid Copilot's ghost text all the time. The two
@@ -20,6 +20,9 @@ require('copilot').setup {
       accept = '<C-l>',
       accept_word = false,
       accept_line = false,
+      -- With auto_trigger off, `next()` doubles as the manual trigger: it
+      -- requests a suggestion if none is showing, and cycles to the next
+      -- candidate if one already is.
       next = '<M-n>',
       prev = '<M-p>',
       dismiss = '<C-]>',

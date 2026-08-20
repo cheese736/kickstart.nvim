@@ -196,7 +196,7 @@ do
   -- Diagnostic Config & Keymaps
   --  See `:help vim.diagnostic.Opts`
   vim.diagnostic.config {
-    update_in_insert = false,
+    update_in_insert = true,
     severity_sort = true,
     float = { border = 'rounded', source = 'if_many' },
     underline = { severity = { min = vim.diagnostic.severity.WARN } },
@@ -563,9 +563,17 @@ do
       layout_config = {
         width = 0.95,
         height = 0.95,
-        -- Fixed 60/40 Preview/Results split instead of the default dynamic
-        -- sizing (which only gives Preview ~40% on narrow windows).
-        preview_width = 0.6,
+        -- preview_width only applies to layout strategies that actually have a
+        -- separate preview pane sized this way (horizontal/cursor/bottom_pane).
+        -- It must NOT sit at the flat/top level, or every picker inherits it —
+        -- including ones on strategies that don't support the key (e.g. the
+        -- `center` strategy used by telescope-ui-select's dropdown theme for
+        -- LSP code actions), which errors out.
+        horizontal = {
+          -- Fixed 60/40 Preview/Results split instead of the default dynamic
+          -- sizing (which only gives Preview ~40% on narrow windows).
+          preview_width = 0.6,
+        },
       },
     },
     pickers = {
@@ -999,10 +1007,23 @@ do
       -- <Tab> tries accept first; if no completion menu is open (e.g. mid
       -- snippet from Roslyn's `prop`/`ctor`/... templates), it falls through
       -- to jumping to the next snippet tabstop, then to normal <Tab> input.
-      ['<Tab>'] = { 'select_and_accept', 'snippet_forward', 'fallback' },
+      ['<Tab>'] = {
+        'select_and_accept',
+        -- If blink had nothing to accept, fall back to accepting Roslyn's
+        -- inline_completion ghost text (same source <M-i> in dotnet.lua uses).
+        function()
+          if vim.lsp.inline_completion.get() then return true end
+        end,
+        'snippet_forward',
+        'fallback',
+      },
       ['<M-j>'] = { 'select_next', 'fallback' },
       ['<M-k>'] = { 'select_prev', 'fallback' },
 
+      -- <C-space> is blink's default manual-show key, but Windows intercepts
+      -- Ctrl+Space as an IME toggle before it ever reaches the terminal/nvim.
+      -- <C-.> is unclaimed anywhere else in this config and isn't an OS shortcut.
+      ['<C-b>'] = { 'show', 'show_documentation', 'hide_documentation' },
       -- For more advanced Luasnip keymaps (e.g. selecting choice nodes, expansion) see:
       --    https://github.com/L3MON4D3/LuaSnip?tab=readme-ov-file#keymaps
     },
@@ -1030,8 +1051,19 @@ do
         },
       },
 
-      -- Preview the selected item inline as grey ghost text, Copilot-style.
-      ghost_text = { enabled = true },
+      -- Disabled: overlapped visually with Roslyn's own inline_completion
+      -- ghost text (both render inline right after the cursor), and carried
+      -- less information than the whole-line/whole-method suggestions
+      -- Roslyn shows there.
+      ghost_text = { enabled = false },
+
+      trigger = {
+        -- Auto-pop on every keyword character while typing, not just on LSP
+        -- trigger characters. NOTE: this can visually collide with Roslyn's
+        -- inline_completion ghost text, which was the original reason this
+        -- was turned off — revisit if it becomes annoying again.
+        show_on_keyword = true,
+      },
     },
 
     sources = {
@@ -1055,7 +1087,20 @@ do
     -- "is" for "IsAdd") with matches that merely contain "is" mid-word but
     -- share vocabulary with the surrounding lines. Turn it off so ranking is
     -- driven by match quality (prefix/word-boundary), not local word density.
-    fuzzy = { implementation = 'prefer_rust_with_warning', use_proximity = false },
+    fuzzy = {
+      implementation = 'prefer_rust_with_warning',
+      use_proximity = false,
+      -- 0 typos tolerated (matches fzf's default) — the default scales with
+      -- keyword length and lets loosely-related identifiers (any string
+      -- containing the query letters *somewhere*, out of camelCase-hump
+      -- order) sneak into the menu as noise alongside the real match.
+      max_typos = 0,
+      -- Put exact/higher-quality matches first so the best candidate isn't
+      -- buried under noisier subsequence matches (frizbee has no
+      -- camelCase-hump-only filter, so noise can't be fully eliminated,
+      -- only outranked).
+      sorts = { 'exact', 'score', 'sort_text' },
+    },
 
     -- Shows a signature help window while you type arguments for a function
     signature = { enabled = true },
