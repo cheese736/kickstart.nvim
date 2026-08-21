@@ -627,11 +627,25 @@ do
 
       -- Fuzzy find all the symbols in your current document.
       -- Symbols are things like variables, functions, types, etc.
-      vim.keymap.set('n', '<leader>lo', builtin.lsp_document_symbols, { buffer = buf, desc = 'D[o]cument Symbols' })
+      -- symbol_width: telescope's lsp symbol entry_maker hardcodes the name
+      -- column to 25 chars and gives the (much shorter) type column all
+      -- remaining space, so long names get truncated while the Results
+      -- window sits mostly empty. Widen the name column instead.
+      vim.keymap.set(
+        'n',
+        '<leader>lo',
+        function() builtin.lsp_document_symbols { symbol_width = 60 } end,
+        { buffer = buf, desc = 'D[o]cument Symbols' }
+      )
 
       -- Fuzzy find all the symbols in your current workspace.
       -- Similar to document symbols, except searches over your entire project.
-      vim.keymap.set('n', '<leader>lw', builtin.lsp_dynamic_workspace_symbols, { buffer = buf, desc = '[W]orkspace Symbols' })
+      vim.keymap.set(
+        'n',
+        '<leader>lw',
+        function() builtin.lsp_dynamic_workspace_symbols { symbol_width = 60 } end,
+        { buffer = buf, desc = '[W]orkspace Symbols' }
+      )
 
       -- Jump to the type of the word under your cursor.
       -- Useful when you're not sure what type a variable is and you want to see
