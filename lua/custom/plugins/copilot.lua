@@ -6,7 +6,7 @@ vim.pack.add { 'https://github.com/zbirenbaum/copilot.lua' }
 
 require('copilot').setup {
   suggestion = {
-    enabled = true,
+    enabled = false,
     auto_trigger = false,
     -- blink.cmp's menu is open almost continuously while typing an
     -- identifier (its default trigger fires on most keystrokes), so leaving
