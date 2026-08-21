@@ -5,7 +5,11 @@ vim.pack.add { 'https://github.com/seblyng/roslyn.nvim' }
 
 -- broad_search: the TFVC workspace is a deep directory tree, so make sure the
 -- .sln is found even when nvim is opened from a subdirectory of the solution.
-require('roslyn').setup { broad_search = true }
+-- filewatching = 'roslyn': tell the server we do NOT support dynamic
+-- didChangeWatchedFiles registration, so the Roslyn server process falls
+-- back to its own native file watcher instead of depending on Neovim's
+-- client-side watcher + protocol negotiation to notice new .cs files.
+require('roslyn').setup { broad_search = true, filewatching = 'roslyn' }
 
 vim.lsp.config('roslyn', {
   -- roslyn.nvim's auto-discovery only looks for `roslyn-language-server(.cmd)`,
@@ -110,6 +114,48 @@ vim.api.nvim_create_autocmd('LspAttach', {
       end,
     })
   end,
+})
+
+-- Neither file-watching mode above is guaranteed to win a race against a
+-- buffer that's created and saved for the very first time inside Neovim
+-- itself. Belt-and-suspenders: track brand-new *.cs buffers (BufNewFile
+-- fires when opening a path that doesn't exist on disk yet) and, the
+-- moment that buffer is actually written for the first time
+-- (BufWritePost), explicitly notify every attached roslyn client that the
+-- file was Created — the same message the built-in watcher would have
+-- sent, just pushed directly instead of depending on glob/registration
+-- matching. Fires exactly once per new file.
+local roslyn_new_file_group = vim.api.nvim_create_augroup('roslyn-new-file-notify', { clear = true })
+local new_cs_buffers = {}
+
+vim.api.nvim_create_autocmd('BufNewFile', {
+  group = roslyn_new_file_group,
+  pattern = '*.cs',
+  callback = function(args) new_cs_buffers[args.buf] = true end,
+})
+
+vim.api.nvim_create_autocmd('BufWritePost', {
+  group = roslyn_new_file_group,
+  pattern = '*.cs',
+  callback = function(args)
+    local bufnr = args.buf
+    if not new_cs_buffers[bufnr] then return end
+    new_cs_buffers[bufnr] = nil -- one-shot: don't refire on later saves
+
+    for _, client in ipairs(vim.lsp.get_clients { name = 'roslyn' }) do
+      client:notify('workspace/didChangeWatchedFiles', {
+        changes = { { uri = vim.uri_from_bufnr(bufnr), type = 1 } }, -- FileChangeType.Created
+      })
+    end
+  end,
+})
+
+-- Drop the tracking entry if a new-file buffer is abandoned unsaved, so
+-- the table doesn't accumulate stale entries.
+vim.api.nvim_create_autocmd('BufDelete', {
+  group = roslyn_new_file_group,
+  pattern = '*.cs',
+  callback = function(args) new_cs_buffers[args.buf] = nil end,
 })
 
 -- Enable CodeLens (e.g. "N references") for any LSP that supports it.
