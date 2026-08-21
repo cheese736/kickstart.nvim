@@ -21,10 +21,33 @@ require('claudecode').setup {
 
 require('which-key').add { { '<leader>a', group = '[A]I / Claude' } }
 
-vim.keymap.set('n', '<leader>ac', '<cmd>ClaudeCode<cr>', { desc = 'Claude: Toggle terminal' })
-vim.keymap.set('n', '<leader>af', '<cmd>ClaudeCodeFocus<cr>', { desc = 'Claude: Focus/toggle' })
-vim.keymap.set('n', '<leader>ar', '<cmd>ClaudeCode --resume<cr>', { desc = 'Claude: Resume session' })
-vim.keymap.set('n', '<leader>aC', '<cmd>ClaudeCode --continue<cr>', { desc = 'Claude: Continue' })
+-- :ClaudeCode et al. only open the terminal — they don't start the
+-- WebSocket/MCP server (that's gated behind auto_start, which we keep
+-- false so nothing runs just from opening nvim). Without the server
+-- running, `claude` gets no CLAUDE_CODE_SSE_PORT env var and falls back to
+-- a plain, unintegrated chat session. So make sure it's up before any
+-- command that opens/focuses a Claude session.
+local function ensure_claude_server()
+  local claudecode = require 'claudecode'
+  if not claudecode.state.server then claudecode.start(false) end
+end
+
+vim.keymap.set('n', '<leader>ac', function()
+  ensure_claude_server()
+  vim.cmd 'ClaudeCode'
+end, { desc = 'Claude: Toggle terminal' })
+vim.keymap.set('n', '<leader>af', function()
+  ensure_claude_server()
+  vim.cmd 'ClaudeCodeFocus'
+end, { desc = 'Claude: Focus/toggle' })
+vim.keymap.set('n', '<leader>ar', function()
+  ensure_claude_server()
+  vim.cmd 'ClaudeCode --resume'
+end, { desc = 'Claude: Resume session' })
+vim.keymap.set('n', '<leader>aC', function()
+  ensure_claude_server()
+  vim.cmd 'ClaudeCode --continue'
+end, { desc = 'Claude: Continue' })
 vim.keymap.set('n', '<leader>ab', '<cmd>ClaudeCodeAdd %<cr>', { desc = 'Claude: Add current buffer' })
 vim.keymap.set('v', '<leader>as', '<cmd>ClaudeCodeSend<cr>', { desc = 'Claude: Send selection' })
 vim.keymap.set('n', '<leader>aa', '<cmd>ClaudeCodeDiffAccept<cr>', { desc = 'Claude: Accept diff' })
