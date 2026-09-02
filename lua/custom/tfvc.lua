@@ -219,6 +219,14 @@ vim.api.nvim_create_autocmd('InsertEnter', {
           return
         end
         vim.schedule(function()
+          -- Leave Insert mode first so Neovim's own InsertLeave handler
+          -- aborts any in-flight LSP inline-completion request before we
+          -- reload the buffer out from under it — otherwise a response that
+          -- arrives after `edit!` indexes stale per-client state and crashes
+          -- (vim.lsp.inline_completion.lua's Completor:handler).
+          if vim.api.nvim_get_current_buf() == event.buf then
+            vim.cmd 'stopinsert'
+          end
           -- Reload so 'readonly' is re-evaluated against the now-writable file.
           vim.api.nvim_buf_call(event.buf, function() vim.cmd 'edit!' end)
           if vim.api.nvim_get_current_buf() == event.buf then
