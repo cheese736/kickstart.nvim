@@ -716,6 +716,12 @@ do
   vim.pack.add { gh 'j-hui/fidget.nvim' }
   require('fidget').setup {}
 
+  -- Always-on breadcrumb (winbar) showing the class/method the cursor is
+  -- currently inside, driven by each LSP's document symbols.
+  vim.pack.add { gh 'SmiteshP/nvim-navic' }
+  require('nvim-navic').setup { separator = ' > ', highlight = true, depth_limit = 5 }
+  vim.o.winbar = "%{%v:lua.require'nvim-navic'.get_location()%}"
+
   --  This function gets run when an LSP attaches to a particular buffer.
   --    That is to say, every time a new file is opened that is associated with
   --    an lsp (for example, opening `main.rs` is associated with `rust_analyzer`) this
@@ -793,6 +799,9 @@ do
       if client and client:supports_method('textDocument/inlayHint', event.buf) then
         map('<leader>lh', function() vim.lsp.inlay_hint.enable(not vim.lsp.inlay_hint.is_enabled { bufnr = event.buf }) end, 'Toggle Inlay [H]ints')
       end
+
+      -- Feed the winbar breadcrumb (nvim-navic) from this client's document symbols.
+      if client and client:supports_method('textDocument/documentSymbol', event.buf) then require('nvim-navic').attach(client, event.buf) end
     end,
   })
 
@@ -919,21 +928,23 @@ end
 do
   -- [[ Formatting ]]
   vim.pack.add { gh 'stevearc/conform.nvim' }
+
+  -- Filetypes to autoformat on save and on leaving Insert mode:
+  local enabled_filetypes = {
+    cs = true,
+    -- lua = true,
+    -- python = true,
+    javascript = true,
+    typescript = true,
+    vue = true,
+    css = true,
+    json = true,
+    html = true,
+  }
+
   require('conform').setup {
     notify_on_error = true,
     format_on_save = function(bufnr)
-      -- You can specify filetypes to autoformat on save here:
-      local enabled_filetypes = {
-        cs = true,
-        -- lua = true,
-        -- python = true,
-        javascript = true,
-        typescript = true,
-        vue = true,
-        css = true,
-        json = true,
-        html = true,
-      }
       if enabled_filetypes[vim.bo[bufnr].filetype] then
         return { timeout_ms = 500 }
       else
@@ -969,6 +980,18 @@ do
   }
 
   vim.keymap.set({ 'n', 'v' }, '<leader>f', function() require('conform').format { async = true } end, { desc = '[F]ormat buffer' })
+
+  -- Also save when leaving Insert mode (for filetypes enabled above), which
+  -- triggers `format_on_save` above rather than formatting directly here.
+  local format_on_insert_leave_group = vim.api.nvim_create_augroup('kickstart-format-on-insert-leave', { clear = true })
+  vim.api.nvim_create_autocmd('InsertLeave', {
+    group = format_on_insert_leave_group,
+    callback = function(event)
+      if enabled_filetypes[vim.bo[event.buf].filetype] and vim.bo[event.buf].buftype == '' and vim.fn.bufname(event.buf) ~= '' then
+        vim.cmd 'update'
+      end
+    end,
+  })
 end
 
 -- ============================================================
@@ -1181,6 +1204,13 @@ do
       end
     end,
   })
+
+  -- [[ Sticky context ]]
+  --  Pins the enclosing function/class signature to the top of the window
+  --  when it scrolls out of view, so you always know which member the
+  --  cursor is currently inside.
+  vim.pack.add { gh 'nvim-treesitter/nvim-treesitter-context' }
+  require('treesitter-context').setup { max_lines = 3 }
 end
 
 -- ============================================================
@@ -1226,6 +1256,7 @@ do
   require('smear_cursor').setup {
     stiffness = 0.8,
     trailing_stiffness = 0.5,
-    distance_stop_animating = 0.5
+    distance_stop_animating = 0.5,
+    smear_insert_mode = false,
   }
 end
