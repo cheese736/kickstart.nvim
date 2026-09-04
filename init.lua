@@ -594,6 +594,109 @@ do
 
   -- See `:help telescope.builtin`
   local builtin = require 'telescope.builtin'
+
+  -- Custom entry_maker for LSP document/workspace symbol pickers: telescope's
+  -- default (make_entry.gen_from_lsp_symbols) gives the type column
+  -- `{ remaining = true }` (unbounded) width and hardcodes it to the full
+  -- lowercase kind name (e.g. "method"), which is why it eats huge trailing
+  -- padding. This collapses that column to one colored letter and never
+  -- shows a path column for either picker (lsp_document_symbols already
+  -- force-hides its path internally via opts.path_display = {'hidden'};
+  -- lsp_dynamic_workspace_symbols does not, so this is what hides it there).
+  local entry_display = require 'telescope.pickers.entry_display'
+  local make_entry = require 'telescope.make_entry'
+
+  -- Reuse telescope's own 8 TelescopeResults* group names (make_entry.lua's
+  -- local lsp_type_highlight) so any existing overrides of those keep
+  -- working, plus a few more kinds common in this repo's stack (C#, Lua,
+  -- TS/Vue) that telescope doesn't cover.
+  local symbol_kind_highlights = {
+    Class = 'TelescopeResultsClass',
+    Constant = 'TelescopeResultsConstant',
+    Field = 'TelescopeResultsField',
+    Function = 'TelescopeResultsFunction',
+    Method = 'TelescopeResultsMethod',
+    Property = 'TelescopeResultsOperator',
+    Struct = 'TelescopeResultsStruct',
+    Variable = 'TelescopeResultsVariable',
+    Interface = 'TelescopeResultsInterface',
+    Enum = 'TelescopeResultsEnum',
+    EnumMember = 'TelescopeResultsEnumMember',
+    Namespace = 'TelescopeResultsNamespace',
+    Module = 'TelescopeResultsModule',
+    Constructor = 'TelescopeResultsConstructor',
+  }
+  -- default = true: only applies if not already set, so these stay
+  -- user/colorscheme-overridable and auto-match the active theme. LSP
+  -- semantic tokens have no "module" or "constructor" type, so those two
+  -- fall back to the closest standard type (namespace / method).
+  vim.api.nvim_set_hl(0, 'TelescopeResultsInterface', { link = '@lsp.type.interface', default = true })
+  vim.api.nvim_set_hl(0, 'TelescopeResultsEnum', { link = '@lsp.type.enum', default = true })
+  vim.api.nvim_set_hl(0, 'TelescopeResultsEnumMember', { link = '@lsp.type.enumMember', default = true })
+  vim.api.nvim_set_hl(0, 'TelescopeResultsNamespace', { link = '@lsp.type.namespace', default = true })
+  vim.api.nvim_set_hl(0, 'TelescopeResultsModule', { link = '@lsp.type.namespace', default = true })
+  vim.api.nvim_set_hl(0, 'TelescopeResultsConstructor', { link = '@lsp.type.method', default = true })
+
+  local symbol_displayer = entry_display.create {
+    separator = ' ',
+    items = {
+      { width = 1 },
+      { remaining = true },
+    },
+  }
+
+  -- Some servers (e.g. vue-language-server, typescript-language-server) bake
+  -- a trailing ": ReturnType" / ": FieldType" straight into the symbol name.
+  -- Drop it from the Results display (the preview pane already shows the
+  -- real signature) by cutting at the first top-level ':' — i.e. the one
+  -- not nested inside (), [], or {}, so parameter types like
+  -- `doQuery(a: string): Promise<string>` still cut after the `)`.
+  local function strip_return_type(name)
+    local depth = 0
+    for i = 1, #name do
+      local c = name:sub(i, i)
+      if c == '(' or c == '[' or c == '{' then
+        depth = depth + 1
+      elseif c == ')' or c == ']' or c == '}' then
+        depth = depth - 1
+      elseif c == ':' and depth == 0 then
+        return name:sub(1, i - 1):gsub('%s+$', '')
+      end
+    end
+    return name
+  end
+
+  local function lsp_symbol_display(entry)
+    return symbol_displayer {
+      { entry.symbol_type:sub(1, 1):upper(), symbol_kind_highlights[entry.symbol_type] },
+      strip_return_type(entry.symbol_name),
+    }
+  end
+
+  -- Mirrors telescope's own make_entry.gen_from_lsp_symbols, minus the path
+  -- column, with the type column collapsed to one letter.
+  local function lsp_symbol_entry_maker(entry)
+    local symbol_type, symbol_name = entry.text:match '%[(.+)%]%s+(.*)'
+    symbol_type = symbol_type or 'unknown'
+    symbol_name = symbol_name or entry.text
+    -- Filename isn't shown as a column, but keep it in `ordinal` so you can
+    -- still fuzzy-filter a big workspace search (<leader>lw) by file, e.g.
+    -- to disambiguate same-named symbols across files.
+    local ordinal_prefix = entry.filename and (vim.fn.fnamemodify(entry.filename, ':t') .. ' ') or ''
+    return make_entry.set_default_entry_mt({
+      value = entry,
+      ordinal = ordinal_prefix .. symbol_name .. ' ' .. symbol_type,
+      display = lsp_symbol_display,
+      filename = entry.filename,
+      lnum = entry.lnum,
+      col = entry.col,
+      symbol_name = symbol_name,
+      symbol_type = symbol_type,
+      start = entry.start,
+      finish = entry.finish,
+    }, {})
+  end
+
   vim.keymap.set('n', '<leader>sh', builtin.help_tags, { desc = '[S]earch [H]elp' })
   vim.keymap.set('n', '<leader>sk', builtin.keymaps, { desc = '[S]earch [K]eymaps' })
   vim.keymap.set('n', '<leader>sf', builtin.find_files, { desc = '[S]earch [F]iles' })
@@ -627,14 +730,14 @@ do
 
       -- Fuzzy find all the symbols in your current document.
       -- Symbols are things like variables, functions, types, etc.
-      -- symbol_width: telescope's lsp symbol entry_maker hardcodes the name
-      -- column to 25 chars and gives the (much shorter) type column all
-      -- remaining space, so long names get truncated while the Results
-      -- window sits mostly empty. Widen the name column instead.
+      -- entry_maker: see lsp_symbol_entry_maker above — collapses the
+      -- unbounded, hardcoded-lowercase type column down to one colored
+      -- letter, and hides the path column (redundant for document_symbols,
+      -- necessary for dynamic_workspace_symbols below).
       vim.keymap.set(
         'n',
         '<leader>lo',
-        function() builtin.lsp_document_symbols { symbol_width = 60 } end,
+        function() builtin.lsp_document_symbols { entry_maker = lsp_symbol_entry_maker } end,
         { buffer = buf, desc = 'D[o]cument Symbols' }
       )
 
@@ -643,7 +746,7 @@ do
       vim.keymap.set(
         'n',
         '<leader>lw',
-        function() builtin.lsp_dynamic_workspace_symbols { symbol_width = 60 } end,
+        function() builtin.lsp_dynamic_workspace_symbols { entry_maker = lsp_symbol_entry_maker } end,
         { buffer = buf, desc = '[W]orkspace Symbols' }
       )
 
