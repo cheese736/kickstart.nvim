@@ -143,6 +143,14 @@ do
   -- Decrease mapped sequence wait time
   vim.o.timeoutlen = 300
 
+  -- Enable code folding, defaulting to treesitter (falls back to no folds in
+  -- buffers without an active parser); the kickstart-lsp-attach group below
+  -- upgrades this per-window to LSP folding ranges when the attached client
+  -- supports them (e.g. Roslyn's semantic folds for C#).
+  vim.o.foldmethod = 'expr'
+  vim.o.foldexpr = 'v:lua.vim.treesitter.foldexpr()'
+  vim.o.foldlevelstart = 99 -- start with every fold open
+
   -- Configure how new splits should be opened
   vim.o.splitright = true
   vim.o.splitbelow = true
@@ -423,12 +431,24 @@ do
     -- Delay between pressing a key and opening which-key (milliseconds)
     delay = 0,
     icons = { mappings = vim.g.have_nerd_font },
+    -- `<auto>` covers every other trigger via which-key's normal detection;
+    -- `L` is added explicitly because which-key's auto-trigger scan refuses
+    -- to shadow bare single-key builtins other than g/z/Z, and `L` (cursor
+    -- to last line) doesn't qualify. Only activates where real `L*`
+    -- keymaps exist (i.e. once an LSP attaches), so it's a no-op elsewhere.
+    triggers = {
+      { '<auto>', mode = 'nxso' },
+      { 'L', mode = { 'n', 'x' } },
+    },
     -- Document existing key chains
     spec = {
       { '<leader>s', group = '[S]earch', mode = { 'n', 'v' } },
       { '<leader>t', group = '[T]oggle' },
       { '<leader>h', group = 'Git [H]unk', mode = { 'n', 'v' } }, -- Enable gitsigns recommended keymaps first
-      { '<leader>l', group = '[L]SP Actions', mode = { 'n', 'x' } },
+      -- Bare `L` (no leader) rather than `<leader>l`: every submap below is
+      -- buffer-local, only set once an LSP client attaches, so this only
+      -- shadows the builtin `L` motion in buffers you're actively coding in.
+      { 'L', group = '[L]SP Actions', mode = { 'n', 'x' } },
     },
   }
 
@@ -680,7 +700,7 @@ do
     symbol_type = symbol_type or 'unknown'
     symbol_name = symbol_name or entry.text
     -- Filename isn't shown as a column, but keep it in `ordinal` so you can
-    -- still fuzzy-filter a big workspace search (<leader>lw) by file, e.g.
+    -- still fuzzy-filter a big workspace search (Lw) by file, e.g.
     -- to disambiguate same-named symbols across files.
     local ordinal_prefix = entry.filename and (vim.fn.fnamemodify(entry.filename, ':t') .. ' ') or ''
     return make_entry.set_default_entry_mt({
@@ -717,16 +737,16 @@ do
       local buf = event.buf
 
       -- Find references for the word under your cursor.
-      vim.keymap.set('n', '<leader>lr', builtin.lsp_references, { buffer = buf, desc = '[R]eferences' })
+      vim.keymap.set('n', 'Lr', builtin.lsp_references, { buffer = buf, desc = '[R]eferences' })
 
       -- Jump to the implementation of the word under your cursor.
       -- Useful when your language has ways of declaring types without an actual implementation.
-      vim.keymap.set('n', '<leader>li', builtin.lsp_implementations, { buffer = buf, desc = '[I]mplementation' })
+      vim.keymap.set('n', 'Li', builtin.lsp_implementations, { buffer = buf, desc = '[I]mplementation' })
 
       -- Jump to the definition of the word under your cursor.
       -- This is where a variable was first declared, or where a function is defined, etc.
       -- To jump back, press <C-t>.
-      vim.keymap.set('n', '<leader>ld', builtin.lsp_definitions, { buffer = buf, desc = '[D]efinition' })
+      vim.keymap.set('n', 'Ld', builtin.lsp_definitions, { buffer = buf, desc = '[D]efinition' })
 
       -- Fuzzy find all the symbols in your current document.
       -- Symbols are things like variables, functions, types, etc.
@@ -736,7 +756,7 @@ do
       -- necessary for dynamic_workspace_symbols below).
       vim.keymap.set(
         'n',
-        '<leader>lo',
+        'Lo',
         function() builtin.lsp_document_symbols { entry_maker = lsp_symbol_entry_maker } end,
         { buffer = buf, desc = 'D[o]cument Symbols' }
       )
@@ -745,7 +765,7 @@ do
       -- Similar to document symbols, except searches over your entire project.
       vim.keymap.set(
         'n',
-        '<leader>lw',
+        'Lw',
         function() builtin.lsp_dynamic_workspace_symbols { entry_maker = lsp_symbol_entry_maker } end,
         { buffer = buf, desc = '[W]orkspace Symbols' }
       )
@@ -753,7 +773,7 @@ do
       -- Jump to the type of the word under your cursor.
       -- Useful when you're not sure what type a variable is and you want to see
       -- the definition of its *type*, not where it was *defined*.
-      vim.keymap.set('n', '<leader>lt', builtin.lsp_type_definitions, { buffer = buf, desc = '[T]ype Definition' })
+      vim.keymap.set('n', 'Lt', builtin.lsp_type_definitions, { buffer = buf, desc = '[T]ype Definition' })
     end,
   })
 
@@ -844,15 +864,15 @@ do
 
       -- Rename the variable under your cursor.
       --  Most Language Servers support renaming across files, etc.
-      map('<leader>ln', vim.lsp.buf.rename, 'Re[n]ame')
+      map('Ln', vim.lsp.buf.rename, 'Re[n]ame')
 
       -- Execute a code action, usually your cursor needs to be on top of an error
       -- or a suggestion from your LSP for this to activate.
-      map('<leader>la', vim.lsp.buf.code_action, 'Code [A]ction', { 'n', 'x' })
+      map('La', vim.lsp.buf.code_action, 'Code [A]ction', { 'n', 'x' })
 
       -- WARN: This is not Goto Definition, this is Goto Declaration.
       --  For example, in C this would take you to the header.
-      map('<leader>lD', vim.lsp.buf.declaration, '[D]eclaration')
+      map('LD', vim.lsp.buf.declaration, '[D]eclaration')
 
       -- Restart the LSP client(s) attached to this buffer. Cheaper than
       -- quitting nvim entirely for cases like Roslyn caching stale
@@ -860,7 +880,7 @@ do
       -- created after the server was already running.
       -- Bare `:LspRestart` (no args) restarts *every* active client across
       -- all buffers, so scope it to just this buffer's client(s) by name.
-      map('<leader>lR', function()
+      map('LR', function()
         local names = vim.tbl_map(function(c) return c.name end, vim.lsp.get_clients { bufnr = 0 })
         if #names == 0 then return end
         vim.cmd('LspRestart ' .. table.concat(names, ' '))
@@ -900,11 +920,17 @@ do
       --
       -- This may be unwanted, since they displace some of your code
       if client and client:supports_method('textDocument/inlayHint', event.buf) then
-        map('<leader>lh', function() vim.lsp.inlay_hint.enable(not vim.lsp.inlay_hint.is_enabled { bufnr = event.buf }) end, 'Toggle Inlay [H]ints')
+        map('Lh', function() vim.lsp.inlay_hint.enable(not vim.lsp.inlay_hint.is_enabled { bufnr = event.buf }) end, 'Toggle Inlay [H]ints')
       end
 
       -- Feed the winbar breadcrumb (nvim-navic) from this client's document symbols.
       if client and client:supports_method('textDocument/documentSymbol', event.buf) then require('nvim-navic').attach(client, event.buf) end
+
+      -- Prefer the LSP's own folding ranges over treesitter's syntax-only folds
+      -- when the attached client supports them.
+      if client and client:supports_method('textDocument/foldingRange') then
+        vim.wo[vim.api.nvim_get_current_win()][0].foldexpr = 'v:lua.vim.lsp.foldexpr()'
+      end
     end,
   })
 
@@ -1271,11 +1297,6 @@ do
     if not vim.treesitter.language.add(language) then return end
     -- Enable syntax highlighting and other treesitter features
     vim.treesitter.start(buf, language)
-
-    -- Enable treesitter based folds
-    -- For more info on folds see `:help folds`
-    -- vim.wo.foldexpr = 'v:lua.vim.treesitter.foldexpr()'
-    -- vim.wo.foldmethod = 'expr'
 
     -- Check if treesitter indentation is available for this language, and if so enable it
     -- in case there is no indent query, the indentexpr will fallback to the vim's built in one
