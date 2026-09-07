@@ -1020,13 +1020,22 @@ do
       -- Custom overrides on top of the 'default' preset above.
       -- <Tab> tries accept first; if no completion menu is open (e.g. mid
       -- snippet from Roslyn's `prop`/`ctor`/... templates), it falls through
-      -- to jumping to the next snippet tabstop, then to normal <Tab> input.
+      -- to accepting Supermaven's ghost text, then to jumping to the next
+      -- snippet tabstop, then to normal <Tab> input.
       ['<Tab>'] = {
         'select_and_accept',
-        -- If blink had nothing to accept, fall back to accepting Roslyn's
-        -- inline_completion ghost text (same source <M-i> in dotnet.lua uses).
+        -- If blink had nothing to accept, fall back to accepting Supermaven's
+        -- inline ghost text suggestion (if one is showing).
         function()
-          if vim.lsp.inline_completion.get() then return true end
+          local supermaven = require 'supermaven-nvim.completion_preview'
+          if supermaven.has_suggestion() then
+            -- <Tab> is bound as an expr-mapping (blink.cmp/keymap/apply.lua),
+            -- whose callback runs under textlock -- calling
+            -- on_accept_suggestion() synchronously here throws E565 since it
+            -- edits the buffer. Defer the actual edit past textlock.
+            vim.schedule(function() supermaven.on_accept_suggestion() end)
+            return true
+          end
         end,
         'snippet_forward',
         'fallback',

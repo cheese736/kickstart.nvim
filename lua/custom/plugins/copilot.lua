@@ -1,7 +1,11 @@
 -- GitHub Copilot: cloud-backed ghost-text completion, alongside Roslyn's LSP
 -- inline completion. Manually triggered (see keymap.next below) rather than
 -- auto-popping on every pause, so suggestions only show up when asked for.
+--
+-- Disabled in favor of supermaven.lua. Left commented out (instead of
+-- deleted) so switching back is a one-line uncomment.
 
+--[[
 vim.pack.add { 'https://github.com/zbirenbaum/copilot.lua' }
 
 require('copilot').setup {
@@ -34,3 +38,4 @@ require('copilot').setup {
 -- Give Copilot's ghost text its own color, distinct from Roslyn's/blink.cmp's
 -- default grey, so it's obvious at a glance which source a suggestion came from.
 vim.api.nvim_set_hl(0, 'CopilotSuggestion', { fg = '#7aa2f7', italic = true })
+--]]
