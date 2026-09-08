@@ -180,6 +180,19 @@ do
   -- is untouched. See `:help editorconfig-properties`
   require('editorconfig').properties.end_of_line = function() end
 
+  -- .NET / TFVC 專案常見副檔名一律使用 CRLF，不受上面的自動偵測影響
+  -- （例如 TFVC 簽出後的 buffer reload，若檔案混入裸 LF 行，自動偵測
+  -- 會誤判整個 buffer 為 unix，存檔後把 CRLF 全部改成 LF）。
+  -- 在讀檔前先設定 buffer-local 'fileformat'，可以讓 Neovim 跳過
+  -- 'fileformats' 自動偵測，直接以 dos 格式讀寫（用法同上面 editorconfig
+  -- monkeypatch 所繞過的內建行為）。See `:help 'fileformat'`
+  vim.api.nvim_create_autocmd({ 'BufReadPre', 'BufNewFile' }, {
+    pattern = { '*.cs', '*.vb', '*.xml', '*.csproj', '*.vbproj', '*.sln', '*.config', '*.resx', '*.props', '*.targets' },
+    callback = function(event)
+      vim.bo[event.buf].fileformat = 'dos'
+    end,
+  })
+
   -- Preview substitutions live, as you type!
   vim.o.inccommand = 'split'
 
