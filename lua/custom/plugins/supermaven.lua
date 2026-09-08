@@ -3,12 +3,17 @@
 -- insert-mode keys Copilot's disabling freed up, since blink.cmp already
 -- claims <Tab> (its own accept/snippet-forward/Roslyn-fallback chain) and
 -- Supermaven's own default keymaps also default to <Tab>.
+--
+-- <Tab> still accepts Supermaven's suggestion, though: init.lua's blink.cmp
+-- <Tab> chain calls into supermaven-nvim.completion_preview directly (after
+-- its own menu and Roslyn's inline_completion, before snippet_forward).
+-- accept_suggestion below is just a backup entry point, independent of that.
 
 vim.pack.add { 'https://github.com/supermaven-inc/supermaven-nvim' }
 
 require('supermaven-nvim').setup {
   keymaps = {
-    -- Copilot's old accept/dismiss keys; unclaimed since 1d9d56c disabled it.
+    -- Backup accept key; Copilot's old accept/dismiss keys, unclaimed since 1d9d56c disabled it.
     accept_suggestion = '<C-l>',
     clear_suggestion = '<C-]>',
     accept_word = '<C-j>', -- default; not used elsewhere in this config

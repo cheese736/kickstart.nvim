@@ -1193,6 +1193,15 @@ do
         function()
           if vim.lsp.inline_completion.get() then return true end
         end,
+        -- ...then Supermaven's ghost text, if it's showing one. (Supermaven's
+        -- own accept key is <C-l>, kept as a backup; see supermaven.lua.)
+        function()
+          local supermaven = require 'supermaven-nvim.completion_preview'
+          if supermaven.has_suggestion() then
+            supermaven.on_accept_suggestion()
+            return true
+          end
+        end,
         'snippet_forward',
         'fallback',
       },
