@@ -143,6 +143,14 @@ do
   -- Decrease mapped sequence wait time
   vim.o.timeoutlen = 300
 
+  -- Enable code folding, defaulting to treesitter (falls back to no folds in
+  -- buffers without an active parser); the kickstart-lsp-attach group below
+  -- upgrades this per-window to LSP folding ranges when the attached client
+  -- supports them (e.g. Roslyn's semantic folds for C#).
+  vim.o.foldmethod = 'expr'
+  vim.o.foldexpr = 'v:lua.vim.treesitter.foldexpr()'
+  vim.o.foldlevelstart = 99 -- start with every fold open
+
   -- Configure how new splits should be opened
   vim.o.splitright = true
   vim.o.splitbelow = true
@@ -171,6 +179,19 @@ do
   -- the rest of editorconfig (indent, charset, trim_trailing_whitespace...)
   -- is untouched. See `:help editorconfig-properties`
   require('editorconfig').properties.end_of_line = function() end
+
+  -- .NET / TFVC 專案常見副檔名一律使用 CRLF，不受上面的自動偵測影響
+  -- （例如 TFVC 簽出後的 buffer reload，若檔案混入裸 LF 行，自動偵測
+  -- 會誤判整個 buffer 為 unix，存檔後把 CRLF 全部改成 LF）。
+  -- 在讀檔前先設定 buffer-local 'fileformat'，可以讓 Neovim 跳過
+  -- 'fileformats' 自動偵測，直接以 dos 格式讀寫（用法同上面 editorconfig
+  -- monkeypatch 所繞過的內建行為）。See `:help 'fileformat'`
+  vim.api.nvim_create_autocmd({ 'BufReadPre', 'BufNewFile' }, {
+    pattern = { '*.cs', '*.vb', '*.xml', '*.csproj', '*.vbproj', '*.sln', '*.config', '*.resx', '*.props', '*.targets' },
+    callback = function(event)
+      vim.bo[event.buf].fileformat = 'dos'
+    end,
+  })
 
   -- Preview substitutions live, as you type!
   vim.o.inccommand = 'split'
@@ -423,12 +444,24 @@ do
     -- Delay between pressing a key and opening which-key (milliseconds)
     delay = 0,
     icons = { mappings = vim.g.have_nerd_font },
+    -- `<auto>` covers every other trigger via which-key's normal detection;
+    -- `L` is added explicitly because which-key's auto-trigger scan refuses
+    -- to shadow bare single-key builtins other than g/z/Z, and `L` (cursor
+    -- to last line) doesn't qualify. Only activates where real `L*`
+    -- keymaps exist (i.e. once an LSP attaches), so it's a no-op elsewhere.
+    triggers = {
+      { '<auto>', mode = 'nxso' },
+      { 'L', mode = { 'n', 'x' } },
+    },
     -- Document existing key chains
     spec = {
       { '<leader>s', group = '[S]earch', mode = { 'n', 'v' } },
       { '<leader>t', group = '[T]oggle' },
       { '<leader>h', group = 'Git [H]unk', mode = { 'n', 'v' } }, -- Enable gitsigns recommended keymaps first
-      { '<leader>l', group = '[L]SP Actions', mode = { 'n', 'x' } },
+      -- Bare `L` (no leader) rather than `<leader>l`: every submap below is
+      -- buffer-local, only set once an LSP client attaches, so this only
+      -- shadows the builtin `L` motion in buffers you're actively coding in.
+      { 'L', group = '[L]SP Actions', mode = { 'n', 'x' } },
     },
   }
 
@@ -594,6 +627,109 @@ do
 
   -- See `:help telescope.builtin`
   local builtin = require 'telescope.builtin'
+
+  -- Custom entry_maker for LSP document/workspace symbol pickers: telescope's
+  -- default (make_entry.gen_from_lsp_symbols) gives the type column
+  -- `{ remaining = true }` (unbounded) width and hardcodes it to the full
+  -- lowercase kind name (e.g. "method"), which is why it eats huge trailing
+  -- padding. This collapses that column to one colored letter and never
+  -- shows a path column for either picker (lsp_document_symbols already
+  -- force-hides its path internally via opts.path_display = {'hidden'};
+  -- lsp_dynamic_workspace_symbols does not, so this is what hides it there).
+  local entry_display = require 'telescope.pickers.entry_display'
+  local make_entry = require 'telescope.make_entry'
+
+  -- Reuse telescope's own 8 TelescopeResults* group names (make_entry.lua's
+  -- local lsp_type_highlight) so any existing overrides of those keep
+  -- working, plus a few more kinds common in this repo's stack (C#, Lua,
+  -- TS/Vue) that telescope doesn't cover.
+  local symbol_kind_highlights = {
+    Class = 'TelescopeResultsClass',
+    Constant = 'TelescopeResultsConstant',
+    Field = 'TelescopeResultsField',
+    Function = 'TelescopeResultsFunction',
+    Method = 'TelescopeResultsMethod',
+    Property = 'TelescopeResultsOperator',
+    Struct = 'TelescopeResultsStruct',
+    Variable = 'TelescopeResultsVariable',
+    Interface = 'TelescopeResultsInterface',
+    Enum = 'TelescopeResultsEnum',
+    EnumMember = 'TelescopeResultsEnumMember',
+    Namespace = 'TelescopeResultsNamespace',
+    Module = 'TelescopeResultsModule',
+    Constructor = 'TelescopeResultsConstructor',
+  }
+  -- default = true: only applies if not already set, so these stay
+  -- user/colorscheme-overridable and auto-match the active theme. LSP
+  -- semantic tokens have no "module" or "constructor" type, so those two
+  -- fall back to the closest standard type (namespace / method).
+  vim.api.nvim_set_hl(0, 'TelescopeResultsInterface', { link = '@lsp.type.interface', default = true })
+  vim.api.nvim_set_hl(0, 'TelescopeResultsEnum', { link = '@lsp.type.enum', default = true })
+  vim.api.nvim_set_hl(0, 'TelescopeResultsEnumMember', { link = '@lsp.type.enumMember', default = true })
+  vim.api.nvim_set_hl(0, 'TelescopeResultsNamespace', { link = '@lsp.type.namespace', default = true })
+  vim.api.nvim_set_hl(0, 'TelescopeResultsModule', { link = '@lsp.type.namespace', default = true })
+  vim.api.nvim_set_hl(0, 'TelescopeResultsConstructor', { link = '@lsp.type.method', default = true })
+
+  local symbol_displayer = entry_display.create {
+    separator = ' ',
+    items = {
+      { width = 1 },
+      { remaining = true },
+    },
+  }
+
+  -- Some servers (e.g. vue-language-server, typescript-language-server) bake
+  -- a trailing ": ReturnType" / ": FieldType" straight into the symbol name.
+  -- Drop it from the Results display (the preview pane already shows the
+  -- real signature) by cutting at the first top-level ':' — i.e. the one
+  -- not nested inside (), [], or {}, so parameter types like
+  -- `doQuery(a: string): Promise<string>` still cut after the `)`.
+  local function strip_return_type(name)
+    local depth = 0
+    for i = 1, #name do
+      local c = name:sub(i, i)
+      if c == '(' or c == '[' or c == '{' then
+        depth = depth + 1
+      elseif c == ')' or c == ']' or c == '}' then
+        depth = depth - 1
+      elseif c == ':' and depth == 0 then
+        return name:sub(1, i - 1):gsub('%s+$', '')
+      end
+    end
+    return name
+  end
+
+  local function lsp_symbol_display(entry)
+    return symbol_displayer {
+      { entry.symbol_type:sub(1, 1):upper(), symbol_kind_highlights[entry.symbol_type] },
+      strip_return_type(entry.symbol_name),
+    }
+  end
+
+  -- Mirrors telescope's own make_entry.gen_from_lsp_symbols, minus the path
+  -- column, with the type column collapsed to one letter.
+  local function lsp_symbol_entry_maker(entry)
+    local symbol_type, symbol_name = entry.text:match '%[(.+)%]%s+(.*)'
+    symbol_type = symbol_type or 'unknown'
+    symbol_name = symbol_name or entry.text
+    -- Filename isn't shown as a column, but keep it in `ordinal` so you can
+    -- still fuzzy-filter a big workspace search (Lw) by file, e.g.
+    -- to disambiguate same-named symbols across files.
+    local ordinal_prefix = entry.filename and (vim.fn.fnamemodify(entry.filename, ':t') .. ' ') or ''
+    return make_entry.set_default_entry_mt({
+      value = entry,
+      ordinal = ordinal_prefix .. symbol_name .. ' ' .. symbol_type,
+      display = lsp_symbol_display,
+      filename = entry.filename,
+      lnum = entry.lnum,
+      col = entry.col,
+      symbol_name = symbol_name,
+      symbol_type = symbol_type,
+      start = entry.start,
+      finish = entry.finish,
+    }, {})
+  end
+
   vim.keymap.set('n', '<leader>sh', builtin.help_tags, { desc = '[S]earch [H]elp' })
   vim.keymap.set('n', '<leader>sk', builtin.keymaps, { desc = '[S]earch [K]eymaps' })
   vim.keymap.set('n', '<leader>sf', builtin.find_files, { desc = '[S]earch [F]iles' })
@@ -614,27 +750,27 @@ do
       local buf = event.buf
 
       -- Find references for the word under your cursor.
-      vim.keymap.set('n', '<leader>lr', builtin.lsp_references, { buffer = buf, desc = '[R]eferences' })
+      vim.keymap.set('n', 'Lr', builtin.lsp_references, { buffer = buf, desc = '[R]eferences' })
 
       -- Jump to the implementation of the word under your cursor.
       -- Useful when your language has ways of declaring types without an actual implementation.
-      vim.keymap.set('n', '<leader>li', builtin.lsp_implementations, { buffer = buf, desc = '[I]mplementation' })
+      vim.keymap.set('n', 'Li', builtin.lsp_implementations, { buffer = buf, desc = '[I]mplementation' })
 
       -- Jump to the definition of the word under your cursor.
       -- This is where a variable was first declared, or where a function is defined, etc.
       -- To jump back, press <C-t>.
-      vim.keymap.set('n', '<leader>ld', builtin.lsp_definitions, { buffer = buf, desc = '[D]efinition' })
+      vim.keymap.set('n', 'Ld', builtin.lsp_definitions, { buffer = buf, desc = '[D]efinition' })
 
       -- Fuzzy find all the symbols in your current document.
       -- Symbols are things like variables, functions, types, etc.
-      -- symbol_width: telescope's lsp symbol entry_maker hardcodes the name
-      -- column to 25 chars and gives the (much shorter) type column all
-      -- remaining space, so long names get truncated while the Results
-      -- window sits mostly empty. Widen the name column instead.
+      -- entry_maker: see lsp_symbol_entry_maker above — collapses the
+      -- unbounded, hardcoded-lowercase type column down to one colored
+      -- letter, and hides the path column (redundant for document_symbols,
+      -- necessary for dynamic_workspace_symbols below).
       vim.keymap.set(
         'n',
-        '<leader>lo',
-        function() builtin.lsp_document_symbols { symbol_width = 60 } end,
+        'Lo',
+        function() builtin.lsp_document_symbols { entry_maker = lsp_symbol_entry_maker } end,
         { buffer = buf, desc = 'D[o]cument Symbols' }
       )
 
@@ -642,15 +778,15 @@ do
       -- Similar to document symbols, except searches over your entire project.
       vim.keymap.set(
         'n',
-        '<leader>lw',
-        function() builtin.lsp_dynamic_workspace_symbols { symbol_width = 60 } end,
+        'Lw',
+        function() builtin.lsp_dynamic_workspace_symbols { entry_maker = lsp_symbol_entry_maker } end,
         { buffer = buf, desc = '[W]orkspace Symbols' }
       )
 
       -- Jump to the type of the word under your cursor.
       -- Useful when you're not sure what type a variable is and you want to see
       -- the definition of its *type*, not where it was *defined*.
-      vim.keymap.set('n', '<leader>lt', builtin.lsp_type_definitions, { buffer = buf, desc = '[T]ype Definition' })
+      vim.keymap.set('n', 'Lt', builtin.lsp_type_definitions, { buffer = buf, desc = '[T]ype Definition' })
     end,
   })
 
@@ -716,6 +852,12 @@ do
   vim.pack.add { gh 'j-hui/fidget.nvim' }
   require('fidget').setup {}
 
+  -- Always-on breadcrumb (winbar) showing the class/method the cursor is
+  -- currently inside, driven by each LSP's document symbols.
+  vim.pack.add { gh 'SmiteshP/nvim-navic' }
+  require('nvim-navic').setup { separator = ' > ', highlight = true, depth_limit = 5 }
+  vim.o.winbar = "%{%v:lua.require'nvim-navic'.get_location()%}"
+
   --  This function gets run when an LSP attaches to a particular buffer.
   --    That is to say, every time a new file is opened that is associated with
   --    an lsp (for example, opening `main.rs` is associated with `rust_analyzer`) this
@@ -730,20 +872,20 @@ do
       -- for LSP related items. It sets the mode, buffer and description for us each time.
       local map = function(keys, func, desc, mode)
         mode = mode or 'n'
-        vim.keymap.set(mode, keys, func, { buffer = event.buf, desc = 'LSP: ' .. desc })
+        vim.keymap.set(mode, keys, func, { buffer = event.buf, desc = desc })
       end
 
       -- Rename the variable under your cursor.
       --  Most Language Servers support renaming across files, etc.
-      map('<leader>ln', vim.lsp.buf.rename, 'Re[n]ame')
+      map('LN', vim.lsp.buf.rename, 'Re[n]ame')
 
       -- Execute a code action, usually your cursor needs to be on top of an error
       -- or a suggestion from your LSP for this to activate.
-      map('<leader>la', vim.lsp.buf.code_action, 'Code [A]ction', { 'n', 'x' })
+      map('LA', vim.lsp.buf.code_action, 'Code [A]ction', { 'n', 'x' })
 
       -- WARN: This is not Goto Definition, this is Goto Declaration.
       --  For example, in C this would take you to the header.
-      map('<leader>lD', vim.lsp.buf.declaration, '[D]eclaration')
+      map('LD', vim.lsp.buf.declaration, '[D]eclaration')
 
       -- Restart the LSP client(s) attached to this buffer. Cheaper than
       -- quitting nvim entirely for cases like Roslyn caching stale
@@ -751,7 +893,7 @@ do
       -- created after the server was already running.
       -- Bare `:LspRestart` (no args) restarts *every* active client across
       -- all buffers, so scope it to just this buffer's client(s) by name.
-      map('<leader>lR', function()
+      map('LR', function()
         local names = vim.tbl_map(function(c) return c.name end, vim.lsp.get_clients { bufnr = 0 })
         if #names == 0 then return end
         vim.cmd('LspRestart ' .. table.concat(names, ' '))
@@ -791,7 +933,16 @@ do
       --
       -- This may be unwanted, since they displace some of your code
       if client and client:supports_method('textDocument/inlayHint', event.buf) then
-        map('<leader>lh', function() vim.lsp.inlay_hint.enable(not vim.lsp.inlay_hint.is_enabled { bufnr = event.buf }) end, 'Toggle Inlay [H]ints')
+        map('Lh', function() vim.lsp.inlay_hint.enable(not vim.lsp.inlay_hint.is_enabled { bufnr = event.buf }) end, 'Toggle Inlay [H]ints')
+      end
+
+      -- Feed the winbar breadcrumb (nvim-navic) from this client's document symbols.
+      if client and client:supports_method('textDocument/documentSymbol', event.buf) then require('nvim-navic').attach(client, event.buf) end
+
+      -- Prefer the LSP's own folding ranges over treesitter's syntax-only folds
+      -- when the attached client supports them.
+      if client and client:supports_method('textDocument/foldingRange') then
+        vim.wo[vim.api.nvim_get_current_win()][0].foldexpr = 'v:lua.vim.lsp.foldexpr()'
       end
     end,
   })
@@ -919,21 +1070,23 @@ end
 do
   -- [[ Formatting ]]
   vim.pack.add { gh 'stevearc/conform.nvim' }
+
+  -- Filetypes to autoformat on save and on leaving Insert mode:
+  local enabled_filetypes = {
+    cs = true,
+    -- lua = true,
+    -- python = true,
+    javascript = true,
+    typescript = true,
+    vue = true,
+    css = true,
+    json = true,
+    html = true,
+  }
+
   require('conform').setup {
     notify_on_error = true,
     format_on_save = function(bufnr)
-      -- You can specify filetypes to autoformat on save here:
-      local enabled_filetypes = {
-        cs = true,
-        -- lua = true,
-        -- python = true,
-        javascript = true,
-        typescript = true,
-        vue = true,
-        css = true,
-        json = true,
-        html = true,
-      }
       if enabled_filetypes[vim.bo[bufnr].filetype] then
         return { timeout_ms = 500 }
       else
@@ -969,6 +1122,18 @@ do
   }
 
   vim.keymap.set({ 'n', 'v' }, '<leader>f', function() require('conform').format { async = true } end, { desc = '[F]ormat buffer' })
+
+  -- Also save when leaving Insert mode (for filetypes enabled above), which
+  -- triggers `format_on_save` above rather than formatting directly here.
+  local format_on_insert_leave_group = vim.api.nvim_create_augroup('kickstart-format-on-insert-leave', { clear = true })
+  vim.api.nvim_create_autocmd('InsertLeave', {
+    group = format_on_insert_leave_group,
+    callback = function(event)
+      if enabled_filetypes[vim.bo[event.buf].filetype] and vim.bo[event.buf].buftype == '' and vim.fn.bufname(event.buf) ~= '' then
+        vim.cmd 'update'
+      end
+    end,
+  })
 end
 
 -- ============================================================
@@ -1034,6 +1199,15 @@ do
             -- on_accept_suggestion() synchronously here throws E565 since it
             -- edits the buffer. Defer the actual edit past textlock.
             vim.schedule(function() supermaven.on_accept_suggestion() end)
+            return true
+          end
+        end,
+        -- ...then Supermaven's ghost text, if it's showing one. (Supermaven's
+        -- own accept key is <C-l>, kept as a backup; see supermaven.lua.)
+        function()
+          local supermaven = require 'supermaven-nvim.completion_preview'
+          if supermaven.has_suggestion() then
+            supermaven.on_accept_suggestion()
             return true
           end
         end,
@@ -1155,11 +1329,6 @@ do
     -- Enable syntax highlighting and other treesitter features
     vim.treesitter.start(buf, language)
 
-    -- Enable treesitter based folds
-    -- For more info on folds see `:help folds`
-    -- vim.wo.foldexpr = 'v:lua.vim.treesitter.foldexpr()'
-    -- vim.wo.foldmethod = 'expr'
-
     -- Check if treesitter indentation is available for this language, and if so enable it
     -- in case there is no indent query, the indentexpr will fallback to the vim's built in one
     local has_indent_query = vim.treesitter.query.get(language, 'indents') ~= nil
@@ -1190,6 +1359,13 @@ do
       end
     end,
   })
+
+  -- [[ Sticky context ]]
+  --  Pins the enclosing function/class signature to the top of the window
+  --  when it scrolls out of view, so you always know which member the
+  --  cursor is currently inside.
+  vim.pack.add { gh 'nvim-treesitter/nvim-treesitter-context' }
+  require('treesitter-context').setup { max_lines = 3 }
 end
 
 -- ============================================================
@@ -1235,6 +1411,7 @@ do
   require('smear_cursor').setup {
     stiffness = 0.8,
     trailing_stiffness = 0.5,
-    distance_stop_animating = 0.5
+    distance_stop_animating = 0.5,
+    smear_insert_mode = false,
   }
 end

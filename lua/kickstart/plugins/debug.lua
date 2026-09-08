@@ -115,11 +115,45 @@ dap.configurations.cs = {
       local dlls = vim.fn.glob(vim.fn.getcwd() .. '/bin/Debug/**/*.dll', true, true)
       if #dlls == 1 then
         return dlls[1]
-      elseif #dlls > 1 then
-        return vim.fn.input('Path to dll: ', dlls[1], 'file')
-      else
-        return vim.fn.input('Path to dll: ', vim.fn.getcwd() .. '/bin/Debug/', 'file')
       end
+
+      return coroutine.create(function(dap_run_co)
+        local actions = require 'telescope.actions'
+        local action_state = require 'telescope.actions.state'
+
+        local function on_select(path)
+          coroutine.resume(dap_run_co, path)
+        end
+
+        local attach_mappings = function(prompt_bufnr, map)
+          local function choose()
+            local selection = action_state.get_selected_entry()
+            actions.close(prompt_bufnr)
+            on_select(selection and (selection.path or selection.value) or nil)
+          end
+          actions.select_default:replace(choose)
+          map({ 'i', 'n' }, '<esc>', function()
+            actions.close(prompt_bufnr)
+            on_select(nil)
+          end)
+          return true
+        end
+
+        if #dlls > 1 then
+          require('telescope.pickers').new({}, {
+            prompt_title = 'Select .dll to debug',
+            finder = require('telescope.finders').new_table { results = dlls },
+            sorter = require('telescope.config').values.generic_sorter {},
+            attach_mappings = attach_mappings,
+          }):find()
+        else
+          require('telescope.builtin').find_files {
+            prompt_title = 'Locate .dll to debug',
+            cwd = vim.fn.getcwd() .. '/bin',
+            attach_mappings = attach_mappings,
+          }
+        end
+      end)
     end,
   },
 }

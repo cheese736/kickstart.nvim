@@ -169,7 +169,7 @@ vim.api.nvim_create_autocmd('LspAttach', {
     if not (client and client:supports_method 'textDocument/codeLens') then return end
 
     vim.lsp.codelens.enable(true, { bufnr = event.buf })
-    vim.keymap.set('n', '<leader>lc', vim.lsp.codelens.run, { buffer = event.buf, desc = '[L]SP Run [C]odeLens' })
+    vim.keymap.set('n', 'LC', vim.lsp.codelens.run, { buffer = event.buf, desc = '[C]odeLens' })
   end,
 })
 
