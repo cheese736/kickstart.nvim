@@ -872,16 +872,16 @@ do
       -- for LSP related items. It sets the mode, buffer and description for us each time.
       local map = function(keys, func, desc, mode)
         mode = mode or 'n'
-        vim.keymap.set(mode, keys, func, { buffer = event.buf, desc = 'LSP: ' .. desc })
+        vim.keymap.set(mode, keys, func, { buffer = event.buf, desc = desc })
       end
 
       -- Rename the variable under your cursor.
       --  Most Language Servers support renaming across files, etc.
-      map('Ln', vim.lsp.buf.rename, 'Re[n]ame')
+      map('LN', vim.lsp.buf.rename, 'Re[n]ame')
 
       -- Execute a code action, usually your cursor needs to be on top of an error
       -- or a suggestion from your LSP for this to activate.
-      map('La', vim.lsp.buf.code_action, 'Code [A]ction', { 'n', 'x' })
+      map('LA', vim.lsp.buf.code_action, 'Code [A]ction', { 'n', 'x' })
 
       -- WARN: This is not Goto Definition, this is Goto Declaration.
       --  For example, in C this would take you to the header.
