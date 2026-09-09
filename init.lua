@@ -1350,6 +1350,41 @@ do
   --  cursor is currently inside.
   vim.pack.add { gh 'nvim-treesitter/nvim-treesitter-context' }
   require('treesitter-context').setup { max_lines = 3 }
+
+  -- [[ Go to enclosing method start/end ]]
+  --  The built-in `[m`/`]m` only track one level of brace nesting, so inside
+  --  a namespace/class they land on the class's `{`/`}` instead of the
+  --  current method's. Walk up the syntax tree to the nearest function/method
+  --  node instead, falling back to the built-in motion where no parser is
+  --  active.
+  ---@param node TSNode
+  local function is_function_node(node) return node:type():match 'function' or node:type():match 'method' end
+
+  ---@param node TSNode
+  local function enclosing_function_node()
+    local node = vim.treesitter.get_node()
+    while node do
+      if is_function_node(node) then return node end
+      node = node:parent()
+    end
+  end
+
+  vim.keymap.set('n', '[m', function()
+    local node = enclosing_function_node()
+    if not node then return vim.cmd 'normal! [m' end
+    local body = node:field('body')[1]
+    local row, col = (body or node):start()
+    vim.api.nvim_win_set_cursor(0, { row + 1, col })
+  end, { desc = 'Go to enclosing [m]ethod start' })
+
+  vim.keymap.set('n', ']m', function()
+    local node = enclosing_function_node()
+    if not node then return vim.cmd 'normal! ]m' end
+    local body = node:field('body')[1]
+    local row, col = (body or node):end_()
+    if col > 0 then col = col - 1 end -- end_() is exclusive; step back onto the closing brace
+    vim.api.nvim_win_set_cursor(0, { row + 1, col })
+  end, { desc = 'Go to enclosing [m]ethod end' })
 end
 
 -- ============================================================
