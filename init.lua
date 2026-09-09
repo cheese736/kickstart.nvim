@@ -713,7 +713,7 @@ do
     symbol_type = symbol_type or 'unknown'
     symbol_name = symbol_name or entry.text
     -- Filename isn't shown as a column, but keep it in `ordinal` so you can
-    -- still fuzzy-filter a big workspace search (Lw) by file, e.g.
+    -- still fuzzy-filter a big workspace search (LW) by file, e.g.
     -- to disambiguate same-named symbols across files.
     local ordinal_prefix = entry.filename and (vim.fn.fnamemodify(entry.filename, ':t') .. ' ') or ''
     return make_entry.set_default_entry_mt({
@@ -750,16 +750,16 @@ do
       local buf = event.buf
 
       -- Find references for the word under your cursor.
-      vim.keymap.set('n', 'Lr', builtin.lsp_references, { buffer = buf, desc = '[R]eferences' })
+      vim.keymap.set('n', 'LR', builtin.lsp_references, { buffer = buf, desc = '[R]eferences' })
 
       -- Jump to the implementation of the word under your cursor.
       -- Useful when your language has ways of declaring types without an actual implementation.
-      vim.keymap.set('n', 'Li', builtin.lsp_implementations, { buffer = buf, desc = '[I]mplementation' })
+      vim.keymap.set('n', 'LI', builtin.lsp_implementations, { buffer = buf, desc = '[I]mplementation' })
 
       -- Jump to the definition of the word under your cursor.
       -- This is where a variable was first declared, or where a function is defined, etc.
       -- To jump back, press <C-t>.
-      vim.keymap.set('n', 'Ld', builtin.lsp_definitions, { buffer = buf, desc = '[D]efinition' })
+      vim.keymap.set('n', 'LD', builtin.lsp_definitions, { buffer = buf, desc = '[D]efinition' })
 
       -- Fuzzy find all the symbols in your current document.
       -- Symbols are things like variables, functions, types, etc.
@@ -769,7 +769,7 @@ do
       -- necessary for dynamic_workspace_symbols below).
       vim.keymap.set(
         'n',
-        'Lo',
+        'LO',
         function() builtin.lsp_document_symbols { entry_maker = lsp_symbol_entry_maker } end,
         { buffer = buf, desc = 'D[o]cument Symbols' }
       )
@@ -778,7 +778,7 @@ do
       -- Similar to document symbols, except searches over your entire project.
       vim.keymap.set(
         'n',
-        'Lw',
+        'LW',
         function() builtin.lsp_dynamic_workspace_symbols { entry_maker = lsp_symbol_entry_maker } end,
         { buffer = buf, desc = '[W]orkspace Symbols' }
       )
@@ -786,7 +786,7 @@ do
       -- Jump to the type of the word under your cursor.
       -- Useful when you're not sure what type a variable is and you want to see
       -- the definition of its *type*, not where it was *defined*.
-      vim.keymap.set('n', 'Lt', builtin.lsp_type_definitions, { buffer = buf, desc = '[T]ype Definition' })
+      vim.keymap.set('n', 'LT', builtin.lsp_type_definitions, { buffer = buf, desc = '[T]ype Definition' })
     end,
   })
 
@@ -883,22 +883,6 @@ do
       -- or a suggestion from your LSP for this to activate.
       map('LA', vim.lsp.buf.code_action, 'Code [A]ction', { 'n', 'x' })
 
-      -- WARN: This is not Goto Definition, this is Goto Declaration.
-      --  For example, in C this would take you to the header.
-      map('LD', vim.lsp.buf.declaration, '[D]eclaration')
-
-      -- Restart the LSP client(s) attached to this buffer. Cheaper than
-      -- quitting nvim entirely for cases like Roslyn caching stale
-      -- .editorconfig-derived formatting options for a file that was
-      -- created after the server was already running.
-      -- Bare `:LspRestart` (no args) restarts *every* active client across
-      -- all buffers, so scope it to just this buffer's client(s) by name.
-      map('LR', function()
-        local names = vim.tbl_map(function(c) return c.name end, vim.lsp.get_clients { bufnr = 0 })
-        if #names == 0 then return end
-        vim.cmd('LspRestart ' .. table.concat(names, ' '))
-      end, '[R]estart')
-
       -- The following two autocommands are used to highlight references of the
       -- word under your cursor when your cursor rests there for a little while.
       --    See `:help CursorHold` for information about when this is executed
@@ -933,7 +917,7 @@ do
       --
       -- This may be unwanted, since they displace some of your code
       if client and client:supports_method('textDocument/inlayHint', event.buf) then
-        map('Lh', function() vim.lsp.inlay_hint.enable(not vim.lsp.inlay_hint.is_enabled { bufnr = event.buf }) end, 'Toggle Inlay [H]ints')
+        map('LH', function() vim.lsp.inlay_hint.enable(not vim.lsp.inlay_hint.is_enabled { bufnr = event.buf }) end, 'Toggle Inlay [H]ints')
       end
 
       -- Feed the winbar breadcrumb (nvim-navic) from this client's document symbols.
