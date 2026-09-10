@@ -217,7 +217,7 @@ do
   -- Diagnostic Config & Keymaps
   --  See `:help vim.diagnostic.Opts`
   vim.diagnostic.config {
-    update_in_insert = true,
+    update_in_insert = false,
     severity_sort = true,
     float = { border = 'rounded', source = 'if_many' },
     underline = { severity = { min = vim.diagnostic.severity.WARN } },
@@ -239,6 +239,14 @@ do
   }
 
   vim.keymap.set('n', '<leader>q', vim.diagnostic.setloclist, { desc = 'Open diagnostic [Q]uickfix list' })
+
+  -- Hide diagnostics while typing; show them again once back in Normal mode.
+  vim.api.nvim_create_autocmd('InsertEnter', {
+    callback = function() vim.diagnostic.enable(false) end,
+  })
+  vim.api.nvim_create_autocmd('InsertLeave', {
+    callback = function() vim.diagnostic.enable(true) end,
+  })
 
   -- Exit terminal mode in the builtin terminal with a shortcut that is a bit easier
   -- for people to discover. Otherwise, you normally need to press <C-\><C-n>, which
