@@ -1115,6 +1115,36 @@ do
 
   vim.keymap.set({ 'n', 'v' }, '<leader>f', function() require('conform').format { async = true } end, { desc = '[F]ormat buffer' })
 
+  -- Paste and format: replay the paste (preserving any count/register the
+  -- user specified), then format just the pasted range for filetypes
+  -- enabled above.
+  local function paste_and_format(key, visual)
+    return function()
+      if visual then
+        -- Lua-callback visual mappings drop out of Visual mode before the
+        -- callback runs, so reselect the last visual area with `gv` first.
+        vim.cmd.normal { args = { 'gv"' .. vim.v.register .. key }, bang = true }
+      else
+        local count = vim.v.count > 0 and tostring(vim.v.count) or ''
+        vim.cmd.normal { args = { count .. '"' .. vim.v.register .. key }, bang = true }
+      end
+
+      if enabled_filetypes[vim.bo.filetype] and vim.bo.buftype == '' then
+        require('conform').format {
+          async = true,
+          range = {
+            start = vim.api.nvim_buf_get_mark(0, '['),
+            ['end'] = vim.api.nvim_buf_get_mark(0, ']'),
+          },
+        }
+      end
+    end
+  end
+
+  vim.keymap.set('n', 'p', paste_and_format('p', false), { desc = 'Paste after and format' })
+  vim.keymap.set('n', 'P', paste_and_format('P', false), { desc = 'Paste before and format' })
+  vim.keymap.set('v', 'p', paste_and_format('p', true), { desc = 'Paste over selection and format' })
+
   -- Also save when leaving Insert mode (for filetypes enabled above), which
   -- triggers `format_on_save` above rather than formatting directly here.
   local format_on_insert_leave_group = vim.api.nvim_create_augroup('kickstart-format-on-insert-leave', { clear = true })
