@@ -4,19 +4,19 @@
 -- change the command under that to load whatever the name of that colorscheme is.
 --
 -- If you want to see what colorschemes are already installed, you can use `:Telescope colorscheme`.
-vim.pack.add { 'https://github.com/folke/tokyonight.nvim' }
+-- vim.pack.add { 'https://github.com/folke/tokyonight.nvim' }
 ---@diagnostic disable-next-line: missing-fields
-require('tokyonight').setup {
-  styles = {
-    comments = { italic = false }, -- Disable italics in comments
-  },
-}
+-- require('tokyonight').setup {
+--   styles = {
+--     comments = { italic = false }, -- Disable italics in comments
+--   },
+-- }
 
 -- Installed as an alternative to tokyonight — swap the `vim.cmd.colorscheme`
 -- call below to 'catppuccin' (or a flavor variant) to switch to it.
 vim.pack.add { 'https://github.com/catppuccin/nvim' }
 require('catppuccin').setup {
-  flavour = 'frappe', -- latte, frappe, macchiato, mocha
+  flavour = 'macchiato', -- latte, frappe, macchiato, mocha
 }
 
 -- Load the colorscheme here.
