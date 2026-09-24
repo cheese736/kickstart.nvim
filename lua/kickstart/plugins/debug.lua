@@ -53,22 +53,46 @@ dapui.setup {
   -- Set icons to characters that are more likely to work in every terminal.
   --    Feel free to remove or use ones that you like more! :)
   --    Don't feel like these are good choices.
-  icons = { expanded = '▾', collapsed = '▸', current_frame = '*' },
+  -- icons = { expanded = '▾', collapsed = '▸', current_frame = '*' },
   ---@diagnostic disable-next-line: missing-fields
-  controls = {
-    icons = {
-      pause = '⏸',
-      play = '▶',
-      step_into = '⏎',
-      step_over = '⏭',
-      step_out = '⏮',
-      step_back = 'b',
-      run_last = '▶▶',
-      terminate = '⏹',
-      disconnect = '⏏',
+  -- controls = {
+  --   icons = {
+  --     pause = '⏸',
+  --     play = '▶',
+  --     step_into = '⏎',
+  --     step_over = '⏭',
+  --     step_out = '⏮',
+  --     step_back = 'b',
+  --     run_last = '▶▶',
+  --     terminate = '⏹',
+  --     disconnect = '⏏',
+  --   },
+  -- },
+
+  -- ramboe's minimal ui, see https://www.youtube.com/watch?v=UCA_OqPvBrs
+  expand_lines = true,
+  floating = { border = 'rounded' },
+
+  -- Set dapui window
+  render = {
+    max_type_length = 60,
+    max_value_lines = 200,
+  },
+  -- Only one layout: just the "scope" (variables) list at the bottom
+  layouts = {
+    {
+      elements = {
+        { id = 'scopes', size = 1.0 },
+      },
+      size = 15,
+      position = 'bottom',
     },
   },
 }
+
+vim.keymap.set('n', '<leader>du', function() dapui.toggle() end, { desc = 'DAP UI toggle' })
+vim.keymap.set({ 'n', 'v' }, '<leader>de', function() dapui.eval(nil, { enter = true }) end, { desc = 'DAP Add word under cursor to Watches' })
+vim.keymap.set({ 'n', 'v' }, 'Q', function() dapui.eval() end, { desc = 'DAP Peek' })
 
 -- Change breakpoint icons
 vim.api.nvim_set_hl(0, 'DapBreak', { fg = '#e51400' })
