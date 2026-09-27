@@ -49,20 +49,13 @@ vim.lsp.config('roslyn', {
   },
 })
 
--- Roslyn ships an LSP `textDocument/inlineCompletion` handler (used by VS's
--- IntelliCode whole-line/whole-method suggestions). Neovim 0.12+ has a native
--- client for this protocol (`vim.lsp.inline_completion`), so wire it up to
--- see whether this standalone Roslyn build actually returns anything —
--- IntelliCode's suggestion models normally ship with Visual Studio, so this
--- may just silently return no items.
-vim.lsp.inline_completion.enable()
-
--- <M-i> accepts the ghost text; falls back to a literal <M-i> keypress
--- when nothing is showing. (Previously <C-j>, but that collides with
--- Ctrl-J-as-newline in insert mode.)
-vim.keymap.set('i', '<M-i>', function()
-  if not vim.lsp.inline_completion.get() then return '<M-i>' end
-end, { expr = true, desc = 'Accept LSP inline completion (Roslyn IntelliCode)' })
+-- Roslyn ships an LSP `textDocument/inlineCompletion` handler (VS IntelliCode
+-- whole-line/whole-method suggestions), and Neovim 0.12+ can drive it via
+-- `vim.lsp.inline_completion`. Left DISABLED on purpose: its inline ghost text
+-- renders in the same spot as Supermaven's (see supermaven.lua), so the two
+-- overlap visually in .cs buffers. Supermaven provides ghost text everywhere
+-- instead. Re-enable with `vim.lsp.inline_completion.enable()` (plus an accept
+-- keymap) only if you also disable Supermaven for C#.
 
 -- Roslyn's `textDocument/_vs_onAutoInsert` (a non-standard LSP extension,
 -- same protocol VS/VS Code's C# extension use) expands `///` into an XML
