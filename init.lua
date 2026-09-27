@@ -954,7 +954,9 @@ do
     -- But for many setups, the LSP (`ts_ls`) will work just fine
     -- ts_ls = {},
 
-    stylua = {}, -- Used to format Lua code
+    -- NOTE: stylua is a formatter, not an LSP server, so it lives in the Mason
+    -- `ensure_installed` list below (next to prettier) and is wired into
+    -- conform's formatters_by_ft — not in this `servers` table.
 
     ts_ls = {
       init_options = {
@@ -1033,7 +1035,11 @@ do
   -- You can press `g?` for help in this menu.
   -- Some lspconfig names differ from their mason package names, so filter them out
   -- and add the correct mason package names explicitly below
-  local lspconfig_to_mason = { vue_ls = 'vue-language-server', ts_ls = 'typescript-language-server' }
+  local lspconfig_to_mason = {
+    vue_ls = 'vue-language-server',
+    ts_ls = 'typescript-language-server',
+    lua_ls = 'lua-language-server',
+  }
   local ensure_installed = vim.tbl_filter(function(n) return not lspconfig_to_mason[n] end, vim.tbl_keys(servers or {}))
   vim.list_extend(ensure_installed, {
     -- You can add other tools here that you want Mason to install
@@ -1041,6 +1047,8 @@ do
     -- formatters_by_ft — Roslyn LSP formatting is used instead), and Mason's
     -- self-contained build crashes on startup on this machine anyway.
     'prettier',
+    'stylua', -- Lua formatter, invoked via conform's formatters_by_ft
+    'lua-language-server',
     'vue-language-server',
     'typescript-language-server',
     'roslyn',
@@ -1103,6 +1111,10 @@ do
       --
       -- You can use 'stop_after_first' to run the first available formatter from the list
       -- javascript = { "prettierd", "prettier", stop_after_first = true },
+      -- lua is not in `enabled_filetypes` above, so this only runs on demand
+      -- via <leader>f (not format-on-save) — deliberate, so editing this config
+      -- doesn't reformat+save on every InsertLeave.
+      lua = { 'stylua' },
       javascript = { 'prettier' },
       typescript = { 'prettier' },
       vue = { 'prettier' },
