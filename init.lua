@@ -465,7 +465,6 @@ do
     spec = {
       { '<leader>s', group = '[S]earch', mode = { 'n', 'v' } },
       { '<leader>t', group = '[T]oggle' },
-      { '<leader>h', group = 'Git [H]unk', mode = { 'n', 'v' } }, -- Enable gitsigns recommended keymaps first
       -- Bare `L` (no leader) rather than `<leader>l`: every submap below is
       -- buffer-local, only set once an LSP client attaches, so this only
       -- shadows the builtin `L` motion in buffers you're actively coding in.
