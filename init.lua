@@ -1215,14 +1215,15 @@ do
       preset = 'default',
 
       -- Custom overrides on top of the 'default' preset above.
-      -- <Tab> tries accept first; if no completion menu is open (e.g. mid
-      -- snippet from Roslyn's `prop`/`ctor`/... templates), it falls through
-      -- to accepting Supermaven's ghost text, then to jumping to the next
-      -- snippet tabstop, then to normal <Tab> input.
+      -- <Tab> order: accept the completion-menu selection first; if none, jump
+      -- to the next snippet tabstop (so filling a Roslyn `///`/`prop`/`ctor`
+      -- template isn't hijacked mid-snippet); if not in a snippet, accept
+      -- Supermaven's inline ghost text; finally fall back to a literal <Tab>.
       ['<Tab>'] = {
         'select_and_accept',
-        -- If blink had nothing to accept, fall back to accepting Supermaven's
-        -- inline ghost text suggestion (if one is showing).
+        'snippet_forward',
+        -- Accept Supermaven's inline ghost text, if it's showing one.
+        -- (Supermaven's own accept key is <C-l>, kept as a backup; see supermaven.lua.)
         function()
           local supermaven = require 'supermaven-nvim.completion_preview'
           if supermaven.has_suggestion() then
@@ -1234,16 +1235,6 @@ do
             return true
           end
         end,
-        -- ...then Supermaven's ghost text, if it's showing one. (Supermaven's
-        -- own accept key is <C-l>, kept as a backup; see supermaven.lua.)
-        function()
-          local supermaven = require 'supermaven-nvim.completion_preview'
-          if supermaven.has_suggestion() then
-            supermaven.on_accept_suggestion()
-            return true
-          end
-        end,
-        'snippet_forward',
         'fallback',
       },
       ['<M-j>'] = { 'select_next', 'fallback' },
@@ -1251,7 +1242,7 @@ do
 
       -- <C-space> is blink's default manual-show key, but Windows intercepts
       -- Ctrl+Space as an IME toggle before it ever reaches the terminal/nvim.
-      -- <C-.> is unclaimed anywhere else in this config and isn't an OS shortcut.
+      -- <C-b> is unclaimed anywhere else in this config and isn't an OS shortcut.
       ['<C-b>'] = { 'show', 'show_documentation', 'hide_documentation' },
       -- For more advanced Luasnip keymaps (e.g. selecting choice nodes, expansion) see:
       --    https://github.com/L3MON4D3/LuaSnip?tab=readme-ov-file#keymaps
