@@ -216,6 +216,8 @@ dap.configurations.cs = {
     type = 'coreclr',
     name = 'launch - netcoredbg',
     request = 'launch',
+    -- W: 是 subst 到 D:\Substitute\W；nvim 可能送真實路徑，但 PDB 記的是 W:\，兩邊需對應才綁得上中斷點。
+    sourceFileMap = { ['W:\\'] = 'D:\\Substitute\\W\\' },
     -- netcoredbg 不會套用 launchSettings.json，這裡手動讀 https profile 的網址，避免退回預設 port 5000。
     env = function()
       local env = { ASPNETCORE_ENVIRONMENT = 'Development' }
