@@ -24,8 +24,20 @@ vim.keymap.set('n', '<leader>b', function() require('dap').toggle_breakpoint() e
 vim.keymap.set('n', '<leader>B', function() require('dap').set_breakpoint(vim.fn.input 'Breakpoint condition: ') end, { desc = 'Debug: Set Breakpoint' })
 vim.keymap.set('n', '<leader>dx', function() require('dap').terminate() end, { desc = 'Debug: Stop' })
 vim.keymap.set('n', '<leader>dX', function() require('dap').clear_breakpoints() end, { desc = 'Debug: Clear all breakpoints' })
--- Toggle to see last session result. Without this, you can't see session output in case of unhandled exception.
-vim.keymap.set('n', '<F7>', function() require('dapui').toggle() end, { desc = 'Debug: See last session result.' })
+-- 跳回目前停下的 frame（看別的檔案後回到執行位置）
+vim.keymap.set('n', '<leader>dc', function() require('dap').focus_frame() end, { desc = 'Debug: Go to current frame' })
+
+-- dapui 不自動開啟，需要時以畫面中央浮動視窗顯示變數（scopes）；在視窗內按 q / <Esc> 關閉。
+-- 需要有進行中的 debug session，否則 dapui 會提示 No active debug session。
+local function toggle_dapui_float()
+  require('dapui').float_element('scopes', {
+    width = math.floor(vim.o.columns * 0.6),
+    height = math.floor(vim.o.lines * 0.6),
+    enter = true,
+    position = 'center',
+  })
+end
+vim.keymap.set('n', '<F7>', toggle_dapui_float, { desc = 'Debug: Variables (float)' })
 
 local dap = require 'dap'
 local dapui = require 'dapui'
@@ -92,7 +104,7 @@ dapui.setup {
   },
 }
 
-vim.keymap.set('n', '<leader>du', function() dapui.toggle() end, { desc = 'DAP UI toggle' })
+vim.keymap.set('n', '<leader>du', toggle_dapui_float, { desc = 'DAP UI (float)' })
 vim.keymap.set({ 'n', 'v' }, '<leader>de', function() dapui.eval(nil, { enter = true }) end, { desc = 'DAP Add word under cursor to Watches' })
 vim.keymap.set({ 'n', 'v' }, 'Q', function() dapui.eval() end, { desc = 'DAP Peek' })
 
@@ -108,7 +120,7 @@ for type, icon in pairs(breakpoint_icons) do
   vim.fn.sign_define(tp, { text = icon, texthl = hl, numhl = hl })
 end
 
-dap.listeners.after.event_initialized['dapui_config'] = dapui.open
+-- 不在 event_initialized 自動開 dapui（改用 F7 / <leader>du 手動開浮動視窗），結束時仍收掉殘留視窗。
 dap.listeners.before.event_terminated['dapui_config'] = dapui.close
 dap.listeners.before.event_exited['dapui_config'] = dapui.close
 
@@ -118,14 +130,20 @@ local hint_lines = {
   ' F10         Step Over     ',
   ' F11         Step Into     ',
   ' F9          Step Out      ',
-  ' F7          Toggle UI     ',
+  ' F7          Variables     ',
   ' <leader>b   Toggle break  ',
+  ' <leader>dc  Go to current ',
   ' <leader>dx  Stop          ',
   ' <leader>dX  Clear breaks  ',
-  ' <leader>du  DAP UI toggle ',
-  ' <leader>de  DAP Add Watches ',
-  ' Q  DAP Peek ',
+  ' <leader>du  Variables     ',
+  ' <leader>de  Add Watches   ',
+  ' Q           Peek          ',
 }
+-- 寬度取最長一行的顯示寬度，避免長行被截；高度隨行數，但不超出畫面。
+local hint_width = 0
+for _, l in ipairs(hint_lines) do
+  hint_width = math.max(hint_width, vim.fn.strdisplaywidth(l))
+end
 local hint_buf, hint_win
 
 local function hint_config()
@@ -134,8 +152,8 @@ local function hint_config()
     anchor = 'NE',
     row = 1,
     col = vim.o.columns - 1,
-    width = #hint_lines[1],
-    height = #hint_lines,
+    width = hint_width,
+    height = math.max(1, math.min(#hint_lines, vim.o.lines - 4)),
     style = 'minimal',
     border = 'rounded',
     focusable = false,
