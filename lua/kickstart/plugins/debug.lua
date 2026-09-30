@@ -22,6 +22,8 @@ vim.keymap.set('n', '<F10>', function() require('dap').step_over() end, { desc =
 vim.keymap.set('n', '<F9>', function() require('dap').step_out() end, { desc = 'Debug: Step Out' })
 vim.keymap.set('n', '<leader>b', function() require('dap').toggle_breakpoint() end, { desc = 'Debug: Toggle Breakpoint' })
 vim.keymap.set('n', '<leader>B', function() require('dap').set_breakpoint(vim.fn.input 'Breakpoint condition: ') end, { desc = 'Debug: Set Breakpoint' })
+vim.keymap.set('n', '<leader>dx', function() require('dap').terminate() end, { desc = 'Debug: Stop' })
+vim.keymap.set('n', '<leader>dX', function() require('dap').clear_breakpoints() end, { desc = 'Debug: Clear all breakpoints' })
 -- Toggle to see last session result. Without this, you can't see session output in case of unhandled exception.
 vim.keymap.set('n', '<F7>', function() require('dapui').toggle() end, { desc = 'Debug: See last session result.' })
 
@@ -110,6 +112,67 @@ dap.listeners.after.event_initialized['dapui_config'] = dapui.open
 dap.listeners.before.event_terminated['dapui_config'] = dapui.close
 dap.listeners.before.event_exited['dapui_config'] = dapui.close
 
+-- Floating key-hint window shown while a debug session is active
+local hint_lines = {
+  ' F5          Continue      ',
+  ' F10         Step Over     ',
+  ' F11         Step Into     ',
+  ' F9          Step Out      ',
+  ' F7          Toggle UI     ',
+  ' <leader>b   Toggle break  ',
+  ' <leader>dx  Stop          ',
+  ' <leader>dX  Clear breaks  ',
+  ' <leader>du  DAP UI toggle ',
+  ' <leader>de  DAP Add word under cursor to Watches ',
+  ' <leader>dE  DAP Peek ',
+}
+local hint_buf, hint_win
+
+local function hint_config()
+  return {
+    relative = 'editor',
+    anchor = 'NE',
+    row = 1,
+    col = vim.o.columns - 1,
+    width = #hint_lines[1],
+    height = #hint_lines,
+    style = 'minimal',
+    border = 'rounded',
+    focusable = false,
+    zindex = 40,
+  }
+end
+
+local function close_hints()
+  if hint_win and vim.api.nvim_win_is_valid(hint_win) then
+    vim.api.nvim_win_close(hint_win, true)
+  end
+  hint_win = nil
+end
+
+local function open_hints()
+  if hint_win and vim.api.nvim_win_is_valid(hint_win) then
+    return
+  end
+  if not (hint_buf and vim.api.nvim_buf_is_valid(hint_buf)) then
+    hint_buf = vim.api.nvim_create_buf(false, true)
+    vim.api.nvim_buf_set_lines(hint_buf, 0, -1, false, hint_lines)
+    vim.bo[hint_buf].modifiable = false
+  end
+  hint_win = vim.api.nvim_open_win(hint_buf, false, hint_config())
+end
+
+dap.listeners.after.event_initialized['dap_hints'] = open_hints
+dap.listeners.before.event_terminated['dap_hints'] = close_hints
+dap.listeners.before.event_exited['dap_hints'] = close_hints
+vim.api.nvim_create_autocmd('VimResized', {
+  callback = function()
+    if hint_win and vim.api.nvim_win_is_valid(hint_win) then
+      vim.api.nvim_win_set_config(hint_win, hint_config())
+    end
+  end,
+})
+
 -- Install golang specific config
 -- require('dap-go').setup {
   -- delve = {
@@ -135,7 +198,25 @@ dap.configurations.cs = {
     type = 'coreclr',
     name = 'launch - netcoredbg',
     request = 'launch',
+    -- netcoredbg 不會套用 launchSettings.json，這裡手動讀 https profile 的網址，避免退回預設 port 5000。
+    env = function()
+      local env = { ASPNETCORE_ENVIRONMENT = 'Development' }
+      local path = vim.fn.getcwd() .. '/Properties/launchSettings.json'
+      if vim.uv.fs_stat(path) then
+        local ok, json = pcall(vim.json.decode, table.concat(vim.fn.readfile(path), '\n'))
+        local profile = ok and json.profiles and json.profiles.https
+        if profile and profile.applicationUrl then env.ASPNETCORE_URLS = profile.applicationUrl end
+      end
+      return env
+    end,
     program = function()
+      -- F5 前先建置，避免 bin 內是舊 dll 導致中斷點綁不上。
+      vim.notify 'dotnet build...'
+      local build = vim.system({ 'dotnet', 'build', '-c', 'Debug', '-v', 'q' }, { text = true }):wait()
+      if build.code ~= 0 then
+        vim.notify('dotnet build 失敗:\n' .. (build.stdout or ''), vim.log.levels.ERROR)
+        return dap.ABORT
+      end
       local dlls = vim.fn.glob(vim.fn.getcwd() .. '/bin/Debug/**/*.dll', true, true)
       if #dlls == 1 then
         return dlls[1]
