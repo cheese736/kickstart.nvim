@@ -124,7 +124,7 @@ local hint_lines = {
   ' <leader>dX  Clear breaks  ',
   ' <leader>du  DAP UI toggle ',
   ' <leader>de  DAP Add word under cursor to Watches ',
-  ' <leader>dE  DAP Peek ',
+  ' Q  DAP Peek ',
 }
 local hint_buf, hint_win
 
