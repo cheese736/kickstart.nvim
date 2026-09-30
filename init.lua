@@ -214,6 +214,10 @@ do
   --  See `:help hlsearch`
   vim.keymap.set('n', '<Esc>', '<cmd>nohlsearch<CR>')
 
+  -- Disable macro recording (an accidental `q` starts "recording @x").
+  --  Buffer-local `q` mappings (help, dapui floats, popups) still close their windows.
+  vim.keymap.set('n', 'q', '<Nop>')
+
   -- Diagnostic Config & Keymaps
   --  See `:help vim.diagnostic.Opts`
   vim.diagnostic.config {
