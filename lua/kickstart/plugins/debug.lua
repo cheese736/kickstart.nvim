@@ -12,102 +12,46 @@
 -- 都是從 W:\ 建置，所以 PDB 裡記的原始碼路徑是 W:\...。
 --
 -- 問題：netcoredbg 用「路徑字串」比對中斷點與 PDB，只要前綴不同（D:\Substitute\W\ vs W:\）
--- 中斷點就永遠停在 pending。而 nvim 端有兩個地方會冒出真實路徑 D:\Substitute\W\...：
---   1. 終端機把起始目錄解成真實路徑 → getcwd() 是 D:\...，program 的 dll 路徑跟著變 D:\...
---   2. oldfiles 等來源記的是舊的 D:\... 路徑 → buffer 名稱是 D:\...，
---      而 nvim-dap 的 setBreakpoints 直接拿 buffer 名稱當 source.path 送出。
+-- 中斷點就永遠停在 pending。而終端機會把起始目錄解成真實路徑，nvim 裡的 cwd、buffer 名稱都是 D:\...，
+-- nvim-dap 的 setBreakpoints 又直接拿 buffer 名稱當 source.path 送出。
 --
--- 已試過但無效：launch 設定的 sourceFileMap（兩個方向都試過），netcoredbg 不會用它來比對中斷點。
+-- 已試過但無效：
+--   - launch 設定的 sourceFileMap（兩個方向都試過），netcoredbg 不會用它來比對中斷點。
+--   - 把 nvim 裡的 cwd / buffer 名稱整個改成 W:：buffer 改名後 Roslyn 以 W: 的 root_dir 再起一個 client，
+--     與原本 D: 的 client 同時掛在 buffer 上（CodeLens 重複），tfvc.lua 等也都得跟著認 W: 路徑。
 --
--- 做法：啟動時把 cwd 換回 W:，並在讀入檔案後把 D:\Substitute\W\... 的 buffer 改名為 W:\...。
-do
-  -- subst 背後的真實路徑前綴（結尾含反斜線，避免誤配到 D:\Substitute\Wxxx）
-  local real_prefix = 'D:\\Substitute\\W\\'
+-- 做法：nvim 內部一律維持 D:\ 真實路徑，只在與除錯器溝通時轉換（送出 D: → W:、收到 W: → D:），
+-- 實作在下方 dap.adapters.coreclr 附近。
+local subst_real_prefix = 'D:\\Substitute\\W\\' -- 結尾含反斜線，避免誤配到 D:\Substitute\Wxxx
+local subst_prefix = 'W:\\'
 
-  -- 把真實路徑轉成 W: 路徑；不在 real_prefix 底下的路徑回傳 nil。
-  -- 先統一成反斜線、比對時忽略大小寫（Windows 路徑不分大小寫）。
-  local function to_subst(path)
-    local p = path:gsub('/', '\\')
-    if p:lower():sub(1, #real_prefix) == real_prefix:lower() then return 'W:\\' .. p:sub(#real_prefix + 1) end
-  end
-
-  -- 1. 修正 cwd。補上結尾反斜線，讓剛好停在 D:\Substitute\W 本身時也能對上前綴。
-  --    之後相對路徑開檔、dll 搜尋（program 裡的 getcwd()）都會是 W:\...。
-  local cwd = to_subst((vim.uv.cwd() or '') .. '\\')
-  if cwd then vim.cmd.cd { cwd, mods = { silent = true } } end
-
-  -- 2. 修正 buffer 名稱。
-  --    不能用 `:edit W:\...`：nvim 以檔案 ID 辨識 buffer，會認出 W: 與 D: 是同一個檔案而沿用原 buffer（名稱不變）。
-  --    所以改用 `:file` 直接改名；但改名後 buffer 會被標成「檔名已變更」，下次 :w 會出現 E13，
-  --    因此再 `:edit!` 從新路徑重讀一次，清掉這個狀態。
-  --    例外：同一檔案的 W: buffer 已經開著時（例如先開了 W: 版，又從舊 oldfiles 開到 D: 版），
-  --    nvim 會另建一個 D: buffer，此時 `:file W:\...` 會因同名 buffer 已存在（E95）而失敗，
-  --    D: buffer 留下來、中斷點下在它身上就綁不上。所以這種情況改成切到既有的 W: buffer，再刪掉 D: buffer。
-  local augroup = vim.api.nvim_create_augroup('subst-w-path', { clear = true })
-
-  -- 找名稱等於 name 的 buffer（忽略大小寫）。不用 bufnr(name)，因為它把參數當檔名樣式比對，
-  -- 反斜線與空白會被當成特殊字元。
-  local function find_buf(name)
-    for _, b in ipairs(vim.api.nvim_list_bufs()) do
-      if vim.api.nvim_buf_get_name(b):lower() == name:lower() then return b end
-    end
-  end
-
-  vim.api.nvim_create_autocmd('BufReadPost', {
-    group = augroup,
-    callback = function(ev)
-      local new = to_subst(ev.match)
-      if not new then return end
-      -- 延後到讀檔流程結束再改名，避免在 BufReadPost 當下改動正在讀入的 buffer。
-      vim.schedule(function()
-        -- buffer 已關閉，或使用者已經開始編輯（:edit! 會丟掉修改）就不動它。
-        if not vim.api.nvim_buf_is_valid(ev.buf) or vim.bo[ev.buf].modified then return end
-
-        local existing = find_buf(new)
-        if existing and existing ~= ev.buf then
-          -- 已有 W: buffer：把顯示 D: buffer 的視窗都切過去，保留原本的游標位置，然後刪掉 D: buffer。
-          for _, win in ipairs(vim.fn.win_findbuf(ev.buf)) do
-            local pos = vim.api.nvim_win_get_cursor(win)
-            vim.api.nvim_win_set_buf(win, existing)
-            pcall(vim.api.nvim_win_set_cursor, win, pos)
-          end
-          pcall(vim.api.nvim_buf_delete, ev.buf, {})
-          return
-        end
-
-        vim.api.nvim_buf_call(ev.buf, function()
-          -- :edit! 會重設游標與捲動位置，先存起來再還原。
-          local view = vim.fn.winsaveview()
-          -- keepalt：不要讓舊的 D: 名稱變成 alternate file（否則 <C-^> 會跳回 D: 路徑）。
-          vim.cmd('keepalt file ' .. vim.fn.fnameescape(new))
-          -- 重讀時會再觸發一次 BufReadPost，但 W: 路徑 to_subst() 回傳 nil，不會無限循環。
-          vim.cmd 'silent edit!'
-          vim.fn.winrestview(view)
-        end)
-      end)
-    end,
-  })
-
-  -- 3. 修正最近檔案清單（v:oldfiles）。
-  --    以前工作目錄在 D: 時留下的紀錄都是 D:\Substitute\W\...，從 <leader>s. 開就會開到 D: 路徑。
-  --    shada 在 init.lua 跑完之後才讀入，所以要等 VimEnter 再改；改寫後順便去重（W: 與 D: 可能各有一筆），
-  --    保留先出現的順序。之後存 shada 時，舊的 D: 紀錄就會被 W: 取代。
-  vim.api.nvim_create_autocmd('VimEnter', {
-    group = augroup,
-    once = true,
-    callback = function()
-      local seen, files = {}, {}
-      for _, f in ipairs(vim.v.oldfiles) do
-        local p = to_subst(f) or f
-        if not seen[p:lower()] then
-          seen[p:lower()] = true
-          files[#files + 1] = p
-        end
-      end
-      vim.v.oldfiles = files
-    end,
-  })
+-- 把 path 的 from 前綴換成 to；不在 from 底下的路徑回傳 nil。
+-- 先統一成反斜線、比對時忽略大小寫（Windows 路徑不分大小寫）。
+local function swap_prefix(path, from, to)
+  local p = path:gsub('/', '\\')
+  if p:lower():sub(1, #from) == from:lower() then return to .. p:sub(#from + 1) end
 end
+
+local function to_subst(path) return swap_prefix(path, subst_real_prefix, subst_prefix) end
+local function to_real(path) return swap_prefix(path, subst_prefix, subst_real_prefix) end
+
+-- 先前的做法把 v:oldfiles 改寫成 W:\...並存進 shada，從 <leader>s. 開會得到 W: buffer。
+-- 換回 D:\ 並去重，保留先出現的順序。shada 在 init.lua 跑完之後才讀入，所以要等 VimEnter。
+vim.api.nvim_create_autocmd('VimEnter', {
+  group = vim.api.nvim_create_augroup('subst-real-oldfiles', { clear = true }),
+  once = true,
+  callback = function()
+    local seen, files = {}, {}
+    for _, f in ipairs(vim.v.oldfiles) do
+      local p = to_real(f) or f
+      if not seen[p:lower()] then
+        seen[p:lower()] = true
+        files[#files + 1] = p
+      end
+    end
+    vim.v.oldfiles = files
+  end,
+})
 
 vim.pack.add {
   'https://github.com/mfussenegger/nvim-dap',
@@ -315,6 +259,27 @@ dap.adapters.coreclr = {
   args = { '--interpreter=vscode', '--engineLogging=' .. vim.fs.joinpath(vim.fn.stdpath 'cache', 'netcoredbg.log') },
 }
 
+-- 送出：中斷點路徑 D: → W:（見檔案開頭說明）。
+-- nvim-dap 的 Session:set_breakpoints 直接拿 buffer 名稱組 payload，沒有可用的 hook，
+-- 所以包住 Session.request（所有 session 透過 metatable 共用此方法）。
+local Session = require 'dap.session'
+local session_request = Session.request
+function Session:request(command, arguments, on_result)
+  if command == 'setBreakpoints' and arguments and arguments.source and arguments.source.path then
+    arguments.source.path = to_subst(arguments.source.path) or arguments.source.path
+  end
+  return session_request(self, command, arguments, on_result)
+end
+
+-- 收到：堆疊路徑 W: → D:。before listener 在 nvim-dap 處理回應之前執行，
+-- 跳到 frame 時才會開到既有的 D: buffer，而不是另開一個 W: buffer（會多起一個 Roslyn）。
+dap.listeners.before.stackTrace['subst'] = function(_, err, response)
+  if err or not response then return end
+  for _, frame in ipairs(response.stackFrames or {}) do
+    if frame.source and frame.source.path then frame.source.path = to_real(frame.source.path) or frame.source.path end
+  end
+end
+
 dap.configurations.cs = {
   {
     type = 'coreclr',
@@ -340,8 +305,9 @@ dap.configurations.cs = {
         return dap.ABORT
       end
       local dlls = vim.fn.glob(vim.fn.getcwd() .. '/bin/Debug/**/*.dll', true, true)
+      -- dll 路徑也轉成 W:，讓 netcoredbg 載入的模組路徑與 PDB 一致。
       if #dlls == 1 then
-        return dlls[1]
+        return to_subst(dlls[1]) or dlls[1]
       end
 
       return coroutine.create(function(dap_run_co)
@@ -349,7 +315,7 @@ dap.configurations.cs = {
         local action_state = require 'telescope.actions.state'
 
         local function on_select(path)
-          coroutine.resume(dap_run_co, path)
+          coroutine.resume(dap_run_co, path and (to_subst(path) or path))
         end
 
         local attach_mappings = function(prompt_bufnr, map)
