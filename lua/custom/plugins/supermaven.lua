@@ -19,7 +19,7 @@ require('supermaven-nvim').setup {
     -- blink.cmp/Roslyn's default grey — catppuccin frappe's green.
     -- `cterm` is required too: the plugin only applies suggestion_color when
     -- both are set, otherwise it silently falls back to the grey `Comment` group.
-    suggestion_color = '#a6d189',
+    suggestion_color = '#FFC0CB',
     cterm = 150,
   },
 }
