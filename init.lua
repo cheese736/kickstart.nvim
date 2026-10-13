@@ -866,7 +866,13 @@ do
   -- Always-on breadcrumb (winbar) showing the class/method the cursor is
   -- currently inside, driven by each LSP's document symbols.
   vim.pack.add { gh 'SmiteshP/nvim-navic' }
-  require('nvim-navic').setup { separator = ' > ', highlight = true, depth_limit = 5 }
+  require('nvim-navic').setup {
+    separator = ' > ',
+    highlight = true,
+    depth_limit = 5,
+    -- .vue buffers get both vue_ls and ts_ls; navic can only follow one.
+    lsp = { auto_attach = true, preference = { 'vue_ls', 'ts_ls' } },
+  }
   vim.o.winbar = "%{%v:lua.require'nvim-navic'.get_location()%}"
 
   --  This function gets run when an LSP attaches to a particular buffer.
@@ -930,9 +936,6 @@ do
       if client and client:supports_method('textDocument/inlayHint', event.buf) then
         map('LH', function() vim.lsp.inlay_hint.enable(not vim.lsp.inlay_hint.is_enabled { bufnr = event.buf }) end, 'Toggle Inlay [H]ints')
       end
-
-      -- Feed the winbar breadcrumb (nvim-navic) from this client's document symbols.
-      if client and client:supports_method('textDocument/documentSymbol', event.buf) then require('nvim-navic').attach(client, event.buf) end
 
       -- Prefer the LSP's own folding ranges over treesitter's syntax-only folds
       -- when the attached client supports them.
