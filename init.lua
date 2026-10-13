@@ -626,6 +626,10 @@ do
         -- repeating it in Results just eats width there for nothing.
         show_line = false,
       },
+      buffers = {
+        -- Start in normal mode: j/k to move, dd to close a buffer, i to filter.
+        initial_mode = 'normal',
+      },
     },
     extensions = {
       ['ui-select'] = { require('telescope.themes').get_dropdown() },
