@@ -4,6 +4,8 @@
 -- See the kickstart.nvim README for more information
 
 -- Iterate over all Lua files in the plugins directory and load them
+--  Files that other plugins depend on are already required from init.lua, in
+--  the order they need to load; `require` caches them, so they don't run twice here.
 local plugins_dir = vim.fs.joinpath(vim.fn.stdpath 'config', 'lua', 'custom', 'plugins')
 for file_name, type in vim.fs.dir(plugins_dir) do
   if type == 'file' and file_name:match '%.lua$' and file_name ~= 'init.lua' then

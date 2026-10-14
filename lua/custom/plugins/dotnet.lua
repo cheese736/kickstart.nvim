@@ -67,7 +67,7 @@ vim.lsp.config('roslyn', {
 -- roslyn.nvim wiki recipe: https://github.com/seblyng/roslyn.nvim/wiki#textdocument_vs_onautoinsert
 --
 -- Deviates from that recipe by expanding via `luasnip.lsp_expand` instead
--- of `vim.snippet.expand`: blink.cmp's <Tab>/<S-Tab> (init.lua) only know
+-- of `vim.snippet.expand`: blink.cmp's <Tab>/<S-Tab> (blink.lua) only know
 -- how to jump LuaSnip sessions (snippets.preset = 'luasnip'), not the
 -- native vim.snippet engine, so using LuaSnip here lets the existing Tab
 -- keymap jump between <summary>/<param>/<returns> for free.
