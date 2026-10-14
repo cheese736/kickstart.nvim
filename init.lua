@@ -143,13 +143,7 @@ do
   -- Decrease mapped sequence wait time
   vim.o.timeoutlen = 300
 
-  -- Enable code folding, defaulting to treesitter (falls back to no folds in
-  -- buffers without an active parser); the kickstart-lsp-attach group below
-  -- upgrades this per-window to LSP folding ranges when the attached client
-  -- supports them (e.g. Roslyn's semantic folds for C#).
-  vim.o.foldmethod = 'expr'
-  vim.o.foldexpr = 'v:lua.vim.treesitter.foldexpr()'
-  vim.o.foldlevelstart = 99 -- start with every fold open
+  -- Code folding is handled by nvim-ufo, see lua/custom/plugins/ufo.lua.
 
   -- Configure how new splits should be opened
   vim.o.splitright = true
@@ -939,12 +933,6 @@ do
       -- This may be unwanted, since they displace some of your code
       if client and client:supports_method('textDocument/inlayHint', event.buf) then
         map('LH', function() vim.lsp.inlay_hint.enable(not vim.lsp.inlay_hint.is_enabled { bufnr = event.buf }) end, 'Toggle Inlay [H]ints')
-      end
-
-      -- Prefer the LSP's own folding ranges over treesitter's syntax-only folds
-      -- when the attached client supports them.
-      if client and client:supports_method('textDocument/foldingRange') then
-        vim.wo[vim.api.nvim_get_current_win()][0].foldexpr = 'v:lua.vim.lsp.foldexpr()'
       end
     end,
   })
