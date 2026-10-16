@@ -367,13 +367,16 @@ end
 
 -- Usage labels that should stand out; the rest are dimmed.
 local usage_highlights = { write = 'DiagnosticWarn' }
+-- <C-g> filter cycle order (only usages present in the results are visited).
+local usage_order = { 'write', 'read', 'call', 'new', 'type', 'inherit', 'attr', 'using', 'decl' }
 
--- Returns a fresh entry_maker per picker call. The displayer is built
--- lazily on first render: finders.new_table runs the entry_maker over
--- every result up front, so by then loc_width / member_width are the
--- columns' true max and everything lines up.
-local function make_lsp_location_entry_maker()
-  local cache, loc_width, member_width, displayer = {}, 0, 1, nil
+-- Returns fresh { entry_maker, attach_mappings } opts per picker call.
+-- The displayer is built lazily on first render: finders.new_table runs
+-- the entry_maker over every result up front, so by then loc_width /
+-- member_width are the columns' true max and everything lines up. That
+-- same up-front pass collects `entries`, which <C-g> re-filters by usage.
+local function lsp_location_picker_opts()
+  local cache, loc_width, member_width, displayer, entries = {}, 0, 1, nil, {}
 
   local function display(entry)
     -- One-space separator so the kind letter hugs its member name; the
@@ -397,16 +400,17 @@ local function make_lsp_location_entry_maker()
     }
   end
 
-  return function(item)
+  local function entry_maker(item)
     local loc_text = vim.fn.fnamemodify(item.filename, ':t') .. ':' .. item.lnum
     local member_name, member_kind, usage = describe_location(item, cache)
     loc_width = math.max(loc_width, vim.fn.strdisplaywidth(loc_text))
     member_width = math.max(member_width, vim.fn.strdisplaywidth(member_name))
-    return make_entry.set_default_entry_mt({
+    local entry = make_entry.set_default_entry_mt({
       value = item,
       -- The source line isn't shown anymore (the preview has it), but
-      -- keep it filterable alongside file, member and usage (so typing
-      -- `write` narrows to the hits that change the value).
+      -- keep it filterable alongside file, member and usage. Fuzzy-typing
+      -- a usage is loose (`read` also matches `NurseRecord...`); <C-g>
+      -- is the exact usage filter.
       ordinal = loc_text .. ' ' .. member_name .. ' ' .. usage .. ' ' .. item.text,
       display = display,
       filename = item.filename,
@@ -420,7 +424,35 @@ local function make_lsp_location_entry_maker()
       member_kind = member_kind,
       usage = usage,
     }, {})
+    table.insert(entries, entry)
+    return entry
   end
+
+  -- <C-g>: cycle all -> write -> read -> call -> ... -> all, swapping in a
+  -- finder over the already-built entries (columns stay aligned, typed
+  -- query is kept). The prompt title shows the active filter and count.
+  local filter_index, base_title = 0, nil
+  local function attach_mappings(prompt_bufnr, map)
+    map({ 'i', 'n' }, '<C-g>', function()
+      local picker = require('telescope.actions.state').get_current_picker(prompt_bufnr)
+      base_title = base_title or picker.prompt_title
+
+      local present = vim.tbl_filter(function(usage)
+        return vim.iter(entries):any(function(e) return e.usage == usage end)
+      end, usage_order)
+      filter_index = (filter_index + 1) % (#present + 1)
+      local usage = present[filter_index]
+      local results = usage and vim.tbl_filter(function(e) return e.usage == usage end, entries) or entries
+
+      picker:refresh(require('telescope.finders').new_table { results = results, entry_maker = function(e) return e end }, { reset_prompt = false })
+      if picker.layout.prompt.border then
+        picker.layout.prompt.border:change_title(usage and ('%s · %s (%d/%d)'):format(base_title, usage, #results, #entries) or base_title)
+      end
+    end)
+    return true
+  end
+
+  return { entry_maker = entry_maker, attach_mappings = attach_mappings }
 end
 
 vim.keymap.set('n', '<leader>sh', builtin.help_tags, { desc = '[S]earch [H]elp' })
@@ -443,19 +475,15 @@ vim.api.nvim_create_autocmd('LspAttach', {
     local buf = event.buf
 
     -- Find references for the word under your cursor.
-    -- entry_maker: see make_lsp_location_entry_maker above — shows
-    -- `File.cs:lnum  K Member  usage` instead of the full path.
-    vim.keymap.set('n', 'LR', function() builtin.lsp_references { entry_maker = make_lsp_location_entry_maker() } end, { buffer = buf, desc = '[R]eferences' })
+    -- See lsp_location_picker_opts above: shows `File.cs:lnum  K Member
+    -- usage` instead of the full path; <C-g> in the picker cycles a usage
+    -- filter (all -> write -> read -> call -> ...).
+    vim.keymap.set('n', 'LR', function() builtin.lsp_references(lsp_location_picker_opts()) end, { buffer = buf, desc = '[R]eferences' })
 
     -- Jump to the implementation of the word under your cursor.
     -- Useful when your language has ways of declaring types without an actual implementation.
-    -- Same `File.cs:lnum  K Member  usage` entry_maker as LR.
-    vim.keymap.set(
-      'n',
-      'LI',
-      function() builtin.lsp_implementations { entry_maker = make_lsp_location_entry_maker() } end,
-      { buffer = buf, desc = '[I]mplementation' }
-    )
+    -- Same `File.cs:lnum  K Member  usage` layout and <C-g> filter as LR.
+    vim.keymap.set('n', 'LI', function() builtin.lsp_implementations(lsp_location_picker_opts()) end, { buffer = buf, desc = '[I]mplementation' })
 
     -- Jump to the definition of the word under your cursor.
     -- This is where a variable was first declared, or where a function is defined, etc.
