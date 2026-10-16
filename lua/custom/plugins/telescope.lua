@@ -192,6 +192,237 @@ local function lsp_symbol_entry_maker(entry)
   }, {})
 end
 
+-- Custom entry_maker for LSP location pickers (references /
+-- implementations): telescope's default (make_entry.gen_from_quickfix)
+-- renders `<path>:<lnum>:<col>:<line text>`, and with this repo's deep
+-- TFVC paths that's mostly directories. This shows
+-- `File.cs:lnum  K Member  usage` instead: the method/property/field the
+-- hit sits in, its kind as one colored letter (same letters and colors
+-- as LO), and how the hit uses the symbol (call / write / new / ...),
+-- all found via treesitter.
+
+-- The innermost of these around a hit names its Member column; the value
+-- is its kind, keyed into symbol_kind_highlights (Event / Operator /
+-- Delegate have no color there and just show the letter).
+-- local_function_statement is left out on purpose, so a hit inside a
+-- local function (or a lambda) still reports the outer method.
+local member_node_kinds = {
+  -- C#
+  method_declaration = 'Method',
+  constructor_declaration = 'Constructor',
+  destructor_declaration = 'Method',
+  property_declaration = 'Property',
+  indexer_declaration = 'Property',
+  event_declaration = 'Event',
+  operator_declaration = 'Operator',
+  conversion_operator_declaration = 'Operator',
+  field_declaration = 'Field',
+  event_field_declaration = 'Event',
+  enum_member_declaration = 'EnumMember',
+  delegate_declaration = 'Delegate',
+  -- Lua / JS / TS
+  function_declaration = 'Function',
+  method_definition = 'Method',
+}
+-- A hit outside any member (base list, class attribute, ...) falls back
+-- to the enclosing type's name.
+local type_node_kinds = {
+  class_declaration = 'Class',
+  struct_declaration = 'Struct',
+  interface_declaration = 'Interface',
+  record_declaration = 'Class',
+  enum_declaration = 'Enum',
+}
+-- Members whose syntax has no name identifier.
+local fixed_member_names = {
+  indexer_declaration = 'this[]',
+  operator_declaration = 'operator',
+  conversion_operator_declaration = 'operator',
+}
+
+local function member_node_name(node, source)
+  local fixed = fixed_member_names[node:type()]
+  if fixed then return fixed end
+  local name_node = node:field('name')[1]
+  if not name_node then
+    -- C# fields: field_declaration > variable_declaration > variable_declarator(name)
+    for child in node:iter_children() do
+      if child:type() == 'variable_declaration' then
+        for declarator in child:iter_children() do
+          if declarator:type() == 'variable_declarator' then
+            name_node = declarator:field('name')[1]
+            break
+          end
+        end
+        break
+      end
+    end
+  end
+  return name_node and vim.treesitter.get_node_text(name_node, source) or ''
+end
+
+-- Reads from the buffer when it's loaded (the LSP's line numbers reflect
+-- unsaved edits there), otherwise straight from disk with a string
+-- parser, so listing references never loads buffers (no BufRead /
+-- LspAttach firing for every file that has a hit).
+local function parse_location_file(item)
+  local ft = vim.filetype.match { filename = item.filename }
+  local lang = ft and vim.treesitter.language.get_lang(ft)
+  if not lang or not vim.treesitter.language.add(lang) then return nil end
+
+  -- locations_to_items already created (unloaded) buffers for every
+  -- result uri, so this doesn't add any.
+  local loc = item.user_data or {}
+  local bufnr = vim.uri_to_bufnr(loc.uri or loc.targetUri or vim.uri_from_fname(item.filename))
+  local parser, source
+  if vim.api.nvim_buf_is_loaded(bufnr) then
+    parser, source = vim.treesitter.get_parser(bufnr, lang, { error = false }), bufnr
+  else
+    local fd = io.open(item.filename, 'rb')
+    if not fd then return nil end
+    source = fd:read '*a'
+    fd:close()
+    parser = vim.treesitter.get_string_parser(source, lang)
+  end
+  if not parser then return nil end
+  return { root = parser:parse()[1]:root(), source = source, lang = lang }
+end
+
+-- Which field of `parent` holds `node` (nil for an unnamed child).
+local function field_of(parent, node)
+  for child, field in parent:iter_children() do
+    if child:equal(node) then return field end
+  end
+end
+
+-- How a C# reference uses its symbol, read off the syntax around it.
+-- First climb out of wrappers that don't change that (`a.Foo`, `a?.Foo`,
+-- `Ns.Foo`, `Foo<T>`), then look at what the whole expression sits in.
+local function csharp_reference_usage(node)
+  local parent, field = node:parent(), nil
+  while parent do
+    field = field_of(parent, node)
+    local parent_type = parent:type()
+    local is_wrapper = (
+      field == 'name' and (parent_type == 'member_access_expression' or parent_type == 'member_binding_expression' or parent_type == 'qualified_name')
+    )
+      or (parent_type == 'generic_name' and parent:named_child(0):equal(node))
+      or (parent_type == 'conditional_access_expression' and field ~= 'condition')
+    if not is_wrapper then break end
+    node, parent = parent, parent:parent()
+  end
+  if not parent then return 'read' end
+
+  local parent_type = parent:type()
+  if parent_type == 'invocation_expression' and field == 'function' then return 'call' end
+  if parent_type == 'object_creation_expression' and field == 'type' then return 'new' end
+  -- Covers `=`, compound `+=` (incl. event subscribe) and object initializers.
+  if parent_type == 'assignment_expression' and field == 'left' then return 'write' end
+  if parent_type == 'prefix_unary_expression' or parent_type == 'postfix_unary_expression' then
+    local op = parent_type == 'prefix_unary_expression' and parent:child(0) or parent:child(parent:child_count() - 1)
+    return (op:type() == '++' or op:type() == '--') and 'write' or 'read'
+  end
+  if parent_type == 'argument' then
+    local modifier = parent:child(0):type()
+    return (modifier == 'out' or modifier == 'ref') and 'write' or 'read'
+  end
+  if parent_type == 'base_list' then return 'inherit' end
+  if parent_type == 'attribute' then return 'attr' end
+  if parent_type == 'using_directive' then return 'using' end
+  if field == 'type' or field == 'returns' or parent_type == 'type_argument_list' then return 'type' end
+  -- Anything else holding `node` as its `name` is the declaration itself
+  -- (method/class/variable/parameter): the includeDeclaration hit, or LI.
+  if field == 'name' then return 'decl' end
+  return 'read'
+end
+
+-- `cache` is per picker call, so each file is parsed at most once per LR.
+-- Returns member name, member kind (nil if none) and usage; '' when unknown.
+local function describe_location(item, cache)
+  local parsed = cache[item.filename]
+  if parsed == nil then
+    local ok, result = pcall(parse_location_file, item)
+    parsed = ok and result or false
+    cache[item.filename] = parsed
+  end
+  if not parsed then return '', nil, '' end
+
+  local ok, name, kind, usage = pcall(function()
+    local row, col = item.lnum - 1, math.max(item.col - 1, 0)
+    local hit = parsed.root:named_descendant_for_range(row, col, row, col)
+    -- The usage rules are written against the C# grammar; other
+    -- languages leave that column blank rather than guess.
+    local hit_usage = parsed.lang == 'c_sharp' and csharp_reference_usage(hit) or ''
+    local node = hit
+    while node do
+      local node_kind = member_node_kinds[node:type()] or type_node_kinds[node:type()]
+      if node_kind then return member_node_name(node, parsed.source), node_kind, hit_usage end
+      node = node:parent()
+    end
+    return '', nil, hit_usage
+  end)
+  if not ok then return '', nil, '' end
+  return name, kind, usage
+end
+
+-- Usage labels that should stand out; the rest are dimmed.
+local usage_highlights = { write = 'DiagnosticWarn' }
+
+-- Returns a fresh entry_maker per picker call. The displayer is built
+-- lazily on first render: finders.new_table runs the entry_maker over
+-- every result up front, so by then loc_width / member_width are the
+-- columns' true max and everything lines up.
+local function make_lsp_location_entry_maker()
+  local cache, loc_width, member_width, displayer = {}, 0, 1, nil
+
+  local function display(entry)
+    -- One-space separator so the kind letter hugs its member name; the
+    -- +1 widths give the other column gaps two spaces.
+    displayer = displayer
+      or entry_display.create {
+        separator = ' ',
+        items = {
+          { width = loc_width + 1 },
+          { width = 1 },
+          { width = member_width + 1 },
+          { remaining = true },
+        },
+      }
+    local kind = entry.member_kind
+    return displayer {
+      entry.loc_text,
+      { kind and kind:sub(1, 1) or ' ', symbol_kind_highlights[kind] },
+      entry.member_name,
+      { entry.usage, usage_highlights[entry.usage] or 'TelescopeResultsComment' },
+    }
+  end
+
+  return function(item)
+    local loc_text = vim.fn.fnamemodify(item.filename, ':t') .. ':' .. item.lnum
+    local member_name, member_kind, usage = describe_location(item, cache)
+    loc_width = math.max(loc_width, vim.fn.strdisplaywidth(loc_text))
+    member_width = math.max(member_width, vim.fn.strdisplaywidth(member_name))
+    return make_entry.set_default_entry_mt({
+      value = item,
+      -- The source line isn't shown anymore (the preview has it), but
+      -- keep it filterable alongside file, member and usage (so typing
+      -- `write` narrows to the hits that change the value).
+      ordinal = loc_text .. ' ' .. member_name .. ' ' .. usage .. ' ' .. item.text,
+      display = display,
+      filename = item.filename,
+      lnum = item.lnum,
+      col = item.col,
+      text = item.text,
+      start = item.start,
+      finish = item.finish,
+      loc_text = loc_text,
+      member_name = member_name,
+      member_kind = member_kind,
+      usage = usage,
+    }, {})
+  end
+end
+
 vim.keymap.set('n', '<leader>sh', builtin.help_tags, { desc = '[S]earch [H]elp' })
 vim.keymap.set('n', '<leader>sk', builtin.keymaps, { desc = '[S]earch [K]eymaps' })
 vim.keymap.set('n', '<leader>sf', builtin.find_files, { desc = '[S]earch [F]iles' })
@@ -212,11 +443,19 @@ vim.api.nvim_create_autocmd('LspAttach', {
     local buf = event.buf
 
     -- Find references for the word under your cursor.
-    vim.keymap.set('n', 'LR', builtin.lsp_references, { buffer = buf, desc = '[R]eferences' })
+    -- entry_maker: see make_lsp_location_entry_maker above — shows
+    -- `File.cs:lnum  K Member  usage` instead of the full path.
+    vim.keymap.set('n', 'LR', function() builtin.lsp_references { entry_maker = make_lsp_location_entry_maker() } end, { buffer = buf, desc = '[R]eferences' })
 
     -- Jump to the implementation of the word under your cursor.
     -- Useful when your language has ways of declaring types without an actual implementation.
-    vim.keymap.set('n', 'LI', builtin.lsp_implementations, { buffer = buf, desc = '[I]mplementation' })
+    -- Same `File.cs:lnum  K Member  usage` entry_maker as LR.
+    vim.keymap.set(
+      'n',
+      'LI',
+      function() builtin.lsp_implementations { entry_maker = make_lsp_location_entry_maker() } end,
+      { buffer = buf, desc = '[I]mplementation' }
+    )
 
     -- Jump to the definition of the word under your cursor.
     -- This is where a variable was first declared, or where a function is defined, etc.
