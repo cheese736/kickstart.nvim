@@ -151,6 +151,28 @@ vim.api.nvim_create_autocmd('BufDelete', {
   callback = function(args) new_cs_buffers[args.buf] = nil end,
 })
 
+-- Nvim 0.12 hardcodes CodeLens as a virtual line *above* the code
+-- (virt_lines_above in runtime/lua/vim/lsp/codelens.lua), costing a whole
+-- screen line per lens. Intercept its extmarks (namespaces named
+-- `nvim.lsp.codelens:<client_id>`) and render them at end of line instead.
+local codelens_ns = {}
+local set_extmark = vim.api.nvim_buf_set_extmark
+vim.api.nvim_buf_set_extmark = function(buf, ns, row, col, opts)
+  if codelens_ns[ns] == nil then
+    codelens_ns[ns] = false
+    for name, id in pairs(vim.api.nvim_get_namespaces()) do
+      if id == ns then codelens_ns[ns] = vim.startswith(name, 'nvim.lsp.codelens:') end
+    end
+  end
+  if codelens_ns[ns] and opts and opts.virt_lines then
+    -- First chunk is the indent padding the builtin uses to align the line.
+    local chunks = { { '  ', 'LspCodeLensSeparator' } }
+    vim.list_extend(chunks, opts.virt_lines[1], 2)
+    opts = { virt_text = chunks, virt_text_pos = 'eol', hl_mode = 'combine' }
+  end
+  return set_extmark(buf, ns, row, col, opts)
+end
+
 -- Enable CodeLens (e.g. "N references") for any LSP that supports it.
 -- Nvim 0.12 refreshes codelens automatically on buffer changes internally,
 -- so no manual refresh autocmd is needed (vim.lsp.codelens.refresh() is
