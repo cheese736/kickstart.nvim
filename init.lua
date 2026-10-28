@@ -214,18 +214,23 @@ do
 
   -- Diagnostic Config & Keymaps
   --  See `:help vim.diagnostic.Opts`
+  -- Only errors are shown anywhere (signs, underline, lines, float, jumps);
+  -- warnings/hints are still collected, just hidden.
+  local errors_only = { min = vim.diagnostic.severity.ERROR }
   vim.diagnostic.config {
     update_in_insert = false,
     severity_sort = true,
-    float = { border = 'rounded', source = 'if_many' },
-    underline = { severity = { min = vim.diagnostic.severity.WARN } },
+    float = { border = 'rounded', source = 'if_many', severity = errors_only },
+    underline = { severity = errors_only },
+    signs = { severity = errors_only },
 
     -- Can switch between these as you prefer
     virtual_text = false, -- Text shows up at the end of the line
-    virtual_lines = { current_line = true }, -- Virtual-line diagnostics, but only for the cursor's line (avoids layout jumping while typing)
+    virtual_lines = { current_line = true, severity = errors_only }, -- Virtual-line diagnostics, but only for the cursor's line (avoids layout jumping while typing)
 
     -- Auto open the float, so you can easily read the errors when jumping with `[d` and `]d`
     jump = {
+      severity = errors_only,
       on_jump = function(_, bufnr)
         vim.diagnostic.open_float {
           bufnr = bufnr,
@@ -236,7 +241,7 @@ do
     },
   }
 
-  vim.keymap.set('n', '<leader>q', vim.diagnostic.setloclist, { desc = 'Open diagnostic [Q]uickfix list' })
+  vim.keymap.set('n', '<leader>q', function() vim.diagnostic.setloclist { severity = errors_only } end, { desc = 'Open diagnostic [Q]uickfix list' })
 
   -- Hide diagnostics while typing; show them again once back in Normal mode.
   vim.api.nvim_create_autocmd('InsertEnter', {
