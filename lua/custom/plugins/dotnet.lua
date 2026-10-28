@@ -31,9 +31,12 @@ vim.lsp.config('roslyn', {
     -- Turn off Roslyn's IDE/analyzer suggestions (CA*, IDE0090, IDE0028,
     -- "member can be marked as static", etc.) shown as diagnostic virtual
     -- text; real compiler errors/warnings (CS*) are a separate scope and
-    -- keep working.
+    -- keep working. Compiler errors stay limited to open files:
+    -- 'fullSolution' also flags callers in unopened files but is too heavy
+    -- on CPU/memory for these solutions.
     ['csharp|background_analysis'] = {
       dotnet_analyzer_diagnostics_scope = 'none',
+      dotnet_compiler_diagnostics_scope = 'openFiles',
     },
     -- Stop completion from suggesting types/extension methods from
     -- unimported namespaces and reference assemblies (e.g. transitive
@@ -106,6 +109,28 @@ vim.api.nvim_create_autocmd('LspAttach', {
         end, 1)
       end,
     })
+  end,
+})
+
+-- Re-diagnose after changing a shared signature (e.g. an interface method).
+-- Roslyn uses pull diagnostics, and Nvim 0.12 only re-pulls a buffer when
+-- that buffer itself changes; on `workspace/diagnostic/refresh` it does a
+-- workspace pull only, so other open buffers keep stale results. `LE` does
+-- a document pull for every open buffer attached to roslyn.
+-- vim.lsp.diagnostic._refresh is private (no public per-buffer re-pull API).
+vim.api.nvim_create_autocmd('LspAttach', {
+  group = vim.api.nvim_create_augroup('roslyn-rediagnose', { clear = true }),
+  callback = function(args)
+    local client = vim.lsp.get_client_by_id(args.data.client_id)
+    if not (client and client.name == 'roslyn') then return end
+
+    vim.keymap.set('n', 'LE', function()
+      for _, c in ipairs(vim.lsp.get_clients { name = 'roslyn' }) do
+        for buf in pairs(c.attached_buffers) do
+          vim.lsp.diagnostic._refresh(buf, c.id)
+        end
+      end
+    end, { buffer = args.buf, desc = 'Re-check [E]rrors (open buffers)' })
   end,
 })
 
