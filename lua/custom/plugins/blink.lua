@@ -29,20 +29,19 @@ require('blink.cmp').setup {
     -- <Tab> order: accept the completion-menu selection first; if none, jump
     -- to the next snippet tabstop (so filling a Roslyn `///`/`prop`/`ctor`
     -- template isn't hijacked mid-snippet); if not in a snippet, accept
-    -- Supermaven's inline ghost text; finally fall back to a literal <Tab>.
+    -- NinetyFive's inline ghost text; finally fall back to a literal <Tab>.
     ['<Tab>'] = {
       'select_and_accept',
       'snippet_forward',
-      -- Accept Supermaven's inline ghost text, if it's showing one.
-      -- (Supermaven's own accept key is <C-l>, kept as a backup; see supermaven.lua.)
+      -- Accept NinetyFive's inline ghost text, if it's showing one.
+      -- (NinetyFive's own accept key is <C-l>, kept as a backup; see ninetyfive.lua.)
       function()
-        local supermaven = require 'supermaven-nvim.completion_preview'
-        if supermaven.has_suggestion() then
+        if require('ninetyfive.completion').has_active_completion() then
           -- <Tab> is bound as an expr-mapping (blink.cmp/keymap/apply.lua),
-          -- whose callback runs under textlock -- calling
-          -- on_accept_suggestion() synchronously here throws E565 since it
-          -- edits the buffer. Defer the actual edit past textlock.
-          vim.schedule(function() supermaven.on_accept_suggestion() end)
+          -- whose callback runs under textlock -- calling accept()
+          -- synchronously here throws E565 since it edits the buffer.
+          -- Defer the actual edit past textlock.
+          vim.schedule(function() require('ninetyfive').accept() end)
           return true
         end
       end,

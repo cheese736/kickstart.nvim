@@ -52,10 +52,10 @@ vim.lsp.config('roslyn', {
 -- Roslyn ships an LSP `textDocument/inlineCompletion` handler (VS IntelliCode
 -- whole-line/whole-method suggestions), and Neovim 0.12+ can drive it via
 -- `vim.lsp.inline_completion`. Left DISABLED on purpose: its inline ghost text
--- renders in the same spot as Supermaven's (see supermaven.lua), so the two
--- overlap visually in .cs buffers. Supermaven provides ghost text everywhere
+-- renders in the same spot as NinetyFive's (see ninetyfive.lua), so the two
+-- overlap visually in .cs buffers. NinetyFive provides ghost text everywhere
 -- instead. Re-enable with `vim.lsp.inline_completion.enable()` (plus an accept
--- keymap) only if you also disable Supermaven for C#.
+-- keymap) only if you also disable NinetyFive for C#.
 
 -- Roslyn's `textDocument/_vs_onAutoInsert` (a non-standard LSP extension,
 -- same protocol VS/VS Code's C# extension use) expands `///` into an XML
